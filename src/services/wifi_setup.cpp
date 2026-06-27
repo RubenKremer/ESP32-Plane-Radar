@@ -194,6 +194,7 @@ void ensureWifiManager() {
   s_wm.setAPStaticIPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1),
                            IPAddress(255, 255, 255, 0));
   s_wm.setHostname(config::kPortalHostname);
+  s_wm.setTitle(config::kPortalTitle);
   s_wm.setAPCallback(onConfigPortalApStarted);
   s_wm.setWebServerCallback([]() { services::radar_portal::registerRoutes(s_wm); });
   s_wm_configured = true;
