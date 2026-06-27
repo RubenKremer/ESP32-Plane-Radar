@@ -42,7 +42,8 @@ The same portal runs on the setup AP and on the device’s LAN IP while connecte
 - **`http://plane-radar.local/radar-settings`** (LAN) or **`http://192.168.4.1/radar-settings`** (setup AP)
 - **Latitude / Longitude** — radar center and ADS-B query position
 - **Display distances in miles** — ring scale in **mi** instead of **km**
-- **Show airport runways** — major-airport runway overlay on/off
+- **Airports** — show runway overlay; show ICAO labels (independently)
+- **Aircraft** — show flight/callsign, aircraft type, altitude (each optional); altitude in **ft** vs **m** (default ft); optional **ground speed** tag (default off) in **kt** vs **km/h** (default kt)
 - **Range preset** — 5 / 10 / 15 / 25 km (labels show both km and mi, e.g. `10 km / 6 mi`); same as BOOT short tap
 - **Poll interval** — 3 / 5 / 10 / 15 / 30 seconds (default 3 s)
 - All choices persist across reboot (NVS)
@@ -76,12 +77,12 @@ Preset and miles/km choice persist across reboot (`planeradar` NVS namespace). C
 ### Runways
 
 - Major airports from OurAirports (`large_airport`); all open runway strips in range (helipads excluded)
-- Teal runway lines with one ICAO label per airport (e.g. `KJFK`); toggle in **Radar settings**
+- Teal runway lines with one ICAO label per airport (e.g. `KJFK`); runways and labels toggled separately in **Radar settings**
 - Update the embedded list: `python3 scripts/build_large_airports.py`
 
 ### Aircraft
 
-- **Inside the outer ring** — red heading triangle, magenta speed vector (clipped at the ring), callsign / type / altitude tags
+- **Inside the outer ring** — red heading triangle, magenta speed vector (clipped at the ring); optional tags (callsign, type, altitude, ground speed) configured in **Radar settings**
 - **Outside the ring** (still within ADS-B fetch) — small **red dot on the screen rim** at the correct bearing (direction cue; not distance-accurate past the ring)
 - **Tags** — placed toward the **center**: west (left) → tag on the **right** of the symbol; east (right) → tag on the **left**
 

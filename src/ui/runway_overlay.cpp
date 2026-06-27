@@ -286,6 +286,10 @@ void drawLargeAirportRunways(lgfx::LGFXBase& gfx) {
     return;
   }
 
+  if (!radar::showAirportLabels()) {
+    return;
+  }
+
   initRunwayLabelStyle(gfx);
   applyRunwayLabelStyle(gfx);
   for (size_t i = 0; i < label_count; ++i) {

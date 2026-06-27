@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 
 #include "config.h"
@@ -381,34 +382,64 @@ void applyTagStyle() {
 int measureTagBlockWidth(const services::adsb::Aircraft& plane) {
   applyTagStyle();
   int max_w = 0;
-  if (plane.callsign[0] != '\0') {
-    const int w = s_draw->textWidth(plane.callsign);
+
+  auto consider = [&](const char* text) {
+    if (text[0] == '\0') {
+      return;
+    }
+    const int w = s_draw->textWidth(text);
     if (w > max_w) {
       max_w = w;
     }
+  };
+
+  if (radar::showAircraftCallsign()) {
+    consider(plane.callsign);
   }
-  if (plane.type[0] != '\0') {
-    const int w = s_draw->textWidth(plane.type);
-    if (w > max_w) {
-      max_w = w;
-    }
+  if (radar::showAircraftType()) {
+    consider(plane.type);
   }
-  if (plane.alt[0] != '\0') {
-    const int w = s_draw->textWidth(plane.alt);
-    if (w > max_w) {
-      max_w = w;
-    }
+  if (radar::showAircraftAltitude()) {
+    consider(plane.alt);
+  }
+  if (radar::showAircraftSpeed() && plane.gs_knots > 0.0f) {
+    char speed_label[16];
+    radar::formatAircraftSpeedLabel(speed_label, sizeof(speed_label),
+                                    plane.gs_knots);
+    consider(speed_label);
   }
   return max_w;
 }
 
+int countAircraftTagLines(const services::adsb::Aircraft& plane) {
+  int lines = 0;
+  if (radar::showAircraftCallsign() && plane.callsign[0] != '\0') {
+    ++lines;
+  }
+  if (radar::showAircraftType() && plane.type[0] != '\0') {
+    ++lines;
+  }
+  if (radar::showAircraftAltitude() && plane.alt[0] != '\0') {
+    ++lines;
+  }
+  if (radar::showAircraftSpeed() && plane.gs_knots > 0.0f) {
+    ++lines;
+  }
+  return lines;
+}
+
 void drawAircraftTag(int x, int y, const services::adsb::Aircraft& plane) {
+  const int line_count = countAircraftTagLines(plane);
+  if (line_count == 0) {
+    return;
+  }
+
   initTagLabelMetrics();
   applyTagStyle();
 
   const int line_h = s_draw->fontHeight();
   const int block_w = measureTagBlockWidth(plane);
-  const int block_h = line_h * 3;
+  const int block_h = line_h * line_count;
   int ly = y - block_h / 2;
 
   const int symbol_half =
@@ -427,21 +458,30 @@ void drawAircraftTag(int x, int y, const services::adsb::Aircraft& plane) {
   }
   ly = std::max(1, std::min(ly, radar::kSize - block_h - 1));
 
-  if (plane.callsign[0] != '\0') {
+  if (radar::showAircraftCallsign() && plane.callsign[0] != '\0') {
     s_draw->setTextColor(radar::kColorLabel, radar::kColorBackground);
     s_draw->drawString(plane.callsign, anchor_x, ly);
+    ly += line_h;
   }
-  ly += line_h;
 
-  if (plane.type[0] != '\0') {
+  if (radar::showAircraftType() && plane.type[0] != '\0') {
     s_draw->setTextColor(radar::kColorTagType, radar::kColorBackground);
     s_draw->drawString(plane.type, anchor_x, ly);
+    ly += line_h;
   }
-  ly += line_h;
 
-  if (plane.alt[0] != '\0') {
+  if (radar::showAircraftAltitude() && plane.alt[0] != '\0') {
     s_draw->setTextColor(radar::kColorTagAltitude, radar::kColorBackground);
     s_draw->drawString(plane.alt, anchor_x, ly);
+    ly += line_h;
+  }
+
+  if (radar::showAircraftSpeed() && plane.gs_knots > 0.0f) {
+    char speed_label[16];
+    radar::formatAircraftSpeedLabel(speed_label, sizeof(speed_label),
+                                    plane.gs_knots);
+    s_draw->setTextColor(radar::kColorTrackVector, radar::kColorBackground);
+    s_draw->drawString(speed_label, anchor_x, ly);
   }
 }
 
@@ -501,6 +541,9 @@ uint32_t hashAircraftItem(const AircraftDrawItem& item,
   h = hashMix(h, static_cast<uint32_t>(static_cast<int>(lroundf(plane.nose_deg))));
   h = hashMix(h, static_cast<uint32_t>(speedLineLengthPx(plane.gs_knots)));
   h = hashMix(h, static_cast<uint32_t>(static_cast<int>(lroundf(plane.track_deg))));
+  if (radar::showAircraftSpeed()) {
+    h = hashMix(h, static_cast<uint32_t>(static_cast<int>(lroundf(plane.gs_knots))));
+  }
   h = hashString(h, plane.callsign);
   h = hashString(h, plane.type);
   h = hashString(h, plane.alt);
@@ -514,11 +557,23 @@ uint32_t hashBeyondDot(const BeyondDotDrawItem& dot) {
   return h;
 }
 
+uint32_t displayPrefsSignature() {
+  uint32_t h = 0;
+  h = hashMix(h, radar::useFeetForAltitude() ? 1U : 0U);
+  h = hashMix(h, radar::useKnotsForSpeed() ? 1U : 0U);
+  h = hashMix(h, radar::showAircraftCallsign() ? 1U : 0U);
+  h = hashMix(h, radar::showAircraftType() ? 1U : 0U);
+  h = hashMix(h, radar::showAircraftAltitude() ? 1U : 0U);
+  h = hashMix(h, radar::showAircraftSpeed() ? 1U : 0U);
+  return h;
+}
+
 uint32_t frameSignature(const AircraftDrawItem* items, size_t draw_count,
                         const BeyondDotDrawItem* dots, size_t dot_count) {
   const services::adsb::Aircraft* planes = services::adsb::aircraftList();
   uint32_t sig = hashMix(0, static_cast<uint32_t>(draw_count));
   sig = hashMix(sig, static_cast<uint32_t>(dot_count));
+  sig = hashMix(sig, displayPrefsSignature());
   for (size_t d = 0; d < draw_count; ++d) {
     sig ^= hashAircraftItem(items[d], planes[items[d].index]);
   }
@@ -588,9 +643,11 @@ void drawItems(const AircraftDrawItem* items, size_t draw_count,
                     planes[i].gs_knots, radar::kColorTrackVector);
     drawHeadingTriangle(x, y, planes[i].nose_deg, radar::kColorAircraft);
   }
-  for (size_t d = 0; d < draw_count; ++d) {
-    const size_t i = items[d].index;
-    drawAircraftTag(items[d].x, items[d].y, planes[i]);
+  if (radar::anyAircraftTagEnabled()) {
+    for (size_t d = 0; d < draw_count; ++d) {
+      const size_t i = items[d].index;
+      drawAircraftTag(items[d].x, items[d].y, planes[i]);
+    }
   }
 }
 

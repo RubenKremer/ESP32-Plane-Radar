@@ -32,6 +32,7 @@ static const char kPageStyle[] PROGMEM =
     ".wrap{text-align:left;display:inline-block;min-width:260px;max-width:500px}"
     "label.cb{display:block;margin:8px 0}"
     "label.cb input{width:auto;margin-right:8px}"
+    ".section{margin:1.2em 0 0.4em;font-weight:700;text-align:left}"
     ".msg{padding:20px;margin:20px 0;border:1px solid #eee;border-left-width:5px;"
     "border-left-color:#777}"
     ".msg.D{border-left-color:#dc3630}"
@@ -44,7 +45,14 @@ struct FormState {
   char lat[kCoordFieldLen + 1];
   char lon[kCoordFieldLen + 1];
   bool use_miles;
+  bool use_feet_for_altitude;
+  bool use_knots_for_speed;
   bool show_runways;
+  bool show_airport_labels;
+  bool show_aircraft_callsign;
+  bool show_aircraft_type;
+  bool show_aircraft_altitude;
+  bool show_aircraft_speed;
 };
 
 WiFiManager* s_wm = nullptr;
@@ -55,7 +63,14 @@ void loadFormDefaults(FormState* state) {
   snprintf(state->lat, sizeof(state->lat), "%.6f", services::location::lat());
   snprintf(state->lon, sizeof(state->lon), "%.6f", services::location::lon());
   state->use_miles = ui::radar::useMiles();
+  state->use_feet_for_altitude = ui::radar::useFeetForAltitude();
+  state->use_knots_for_speed = ui::radar::useKnotsForSpeed();
   state->show_runways = ui::radar::showRunways();
+  state->show_airport_labels = ui::radar::showAirportLabels();
+  state->show_aircraft_callsign = ui::radar::showAircraftCallsign();
+  state->show_aircraft_type = ui::radar::showAircraftType();
+  state->show_aircraft_altitude = ui::radar::showAircraftAltitude();
+  state->show_aircraft_speed = ui::radar::showAircraftSpeed();
 }
 
 String pageHead(const char* title) {
@@ -139,11 +154,48 @@ String buildFormPage(const FormState& state, const char* error_msg) {
     page += F(" checked");
   }
   page += F("> Display distances in miles</label>"
+            "<p class=\"section\">Airports</p>"
             "<label class=\"cb\"><input type=\"checkbox\" name=\"show_runways\" value=\"T\"");
   if (state.show_runways) {
     page += F(" checked");
   }
   page += F("> Show airport runways</label>"
+            "<label class=\"cb\"><input type=\"checkbox\" name=\"show_airport_labels\" value=\"T\"");
+  if (state.show_airport_labels) {
+    page += F(" checked");
+  }
+  page += F("> Show airport ICAO labels</label>"
+            "<p class=\"section\">Aircraft</p>"
+            "<label class=\"cb\"><input type=\"checkbox\" name=\"show_aircraft_callsign\" value=\"T\"");
+  if (state.show_aircraft_callsign) {
+    page += F(" checked");
+  }
+  page += F("> Show flight / callsign</label>"
+            "<label class=\"cb\"><input type=\"checkbox\" name=\"show_aircraft_type\" value=\"T\"");
+  if (state.show_aircraft_type) {
+    page += F(" checked");
+  }
+  page += F("> Show aircraft type</label>"
+            "<label class=\"cb\"><input type=\"checkbox\" name=\"show_aircraft_altitude\" value=\"T\"");
+  if (state.show_aircraft_altitude) {
+    page += F(" checked");
+  }
+  page += F("> Show altitude</label>"
+            "<label class=\"cb\"><input type=\"checkbox\" name=\"use_feet_for_altitude\" value=\"T\"");
+  if (state.use_feet_for_altitude) {
+    page += F(" checked");
+  }
+  page += F("> Display altitude in feet instead of meters</label>"
+            "<label class=\"cb\"><input type=\"checkbox\" name=\"show_aircraft_speed\" value=\"T\"");
+  if (state.show_aircraft_speed) {
+    page += F(" checked");
+  }
+  page += F("> Show ground speed</label>"
+            "<label class=\"cb\"><input type=\"checkbox\" name=\"use_knots_for_speed\" value=\"T\"");
+  if (state.use_knots_for_speed) {
+    page += F(" checked");
+  }
+  page += F("> Display speed in knots instead of km/h</label>"
             "<label for=\"range_idx\">Range ring label</label>"
             "<select name=\"range_idx\" id=\"range_idx\">");
   page += buildRangeOptions(state.range_idx);
@@ -212,7 +264,14 @@ bool readPostForm(FormState* state, bool* range_ok, bool* poll_ok, bool* locatio
   *location_ok = services::location::validateStrings(state->lat, state->lon);
 
   state->use_miles = s_wm->server->hasArg("use_miles");
+  state->use_feet_for_altitude = s_wm->server->hasArg("use_feet_for_altitude");
+  state->use_knots_for_speed = s_wm->server->hasArg("use_knots_for_speed");
   state->show_runways = s_wm->server->hasArg("show_runways");
+  state->show_airport_labels = s_wm->server->hasArg("show_airport_labels");
+  state->show_aircraft_callsign = s_wm->server->hasArg("show_aircraft_callsign");
+  state->show_aircraft_type = s_wm->server->hasArg("show_aircraft_type");
+  state->show_aircraft_altitude = s_wm->server->hasArg("show_aircraft_altitude");
+  state->show_aircraft_speed = s_wm->server->hasArg("show_aircraft_speed");
   return true;
 }
 
@@ -232,7 +291,13 @@ FormState mergeDisplayState(const FormState& submitted, bool range_ok, bool poll
 void saveFormState(const FormState& state) {
   services::location::saveFromStrings(state.lat, state.lon);
   ui::radar::saveMilesFromPortal(state.use_miles ? "T" : "");
+  ui::radar::saveAltitudeFeetFromPortal(state.use_feet_for_altitude ? "T" : "");
+  ui::radar::saveSpeedKnotsFromPortal(state.use_knots_for_speed ? "T" : "");
   ui::radar::saveRunwaysFromPortal(state.show_runways ? "T" : "");
+  ui::radar::saveAirportLabelsFromPortal(state.show_airport_labels ? "T" : "");
+  ui::radar::saveAircraftTagsFromPortal(
+      state.show_aircraft_callsign, state.show_aircraft_type,
+      state.show_aircraft_altitude, state.show_aircraft_speed);
   ui::radar::setRangeIndex(state.range_idx);
   ui::radar::setPollIntervalIndex(state.poll_idx);
 }

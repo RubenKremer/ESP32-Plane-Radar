@@ -55,10 +55,23 @@ uint8_t rangeIndex();
 float fetchRadiusKm();
 
 bool useMiles();
+bool useFeetForAltitude();
+bool useKnotsForSpeed();
 bool showRunways();
+bool showAirportLabels();
+bool showAircraftCallsign();
+bool showAircraftType();
+bool showAircraftAltitude();
+bool showAircraftSpeed();
+bool anyAircraftTagEnabled();
 /** WiFi portal checkbox: "T" = miles, otherwise km. */
 void saveMilesFromPortal(const char* checkbox_value);
+void saveAltitudeFeetFromPortal(const char* checkbox_value);
+void saveSpeedKnotsFromPortal(const char* checkbox_value);
 void saveRunwaysFromPortal(const char* checkbox_value);
+void saveAirportLabelsFromPortal(const char* checkbox_value);
+void saveAircraftTagsFromPortal(bool callsign, bool type, bool altitude,
+                                bool speed);
 void formatRing3Label(char* buf, size_t len, float ring3_km, bool use_miles);
 void formatCurrentRing3Label(char* buf, size_t len);
 /** Portal dropdown: dual-unit spaced label, e.g. "10 km / 6 mi". */
@@ -71,6 +84,7 @@ bool pollTimerReset();
 void clearPollTimerReset();
 /** Portal dropdown label, e.g. "3 seconds". */
 void formatPollIntervalOption(char* buf, size_t len, unsigned long interval_ms);
+void formatAircraftSpeedLabel(char* buf, size_t len, float gs_knots);
 
 /** Reset distance units to km (e.g. with WiFi credential wipe). */
 void unitsReset();
