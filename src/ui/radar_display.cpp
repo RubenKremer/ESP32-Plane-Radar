@@ -52,6 +52,8 @@ int s_scale_label_h = 0;
 lgfx::LovyanGFX* s_draw = &tft;
 LGFX_Sprite s_frame(&tft);
 bool s_frame_ready = false;
+uint32_t s_last_frame_sig = 0;
+bool s_have_frame_sig = false;
 
 class DrawScope {
  public:
@@ -480,16 +482,61 @@ void sortBeyondDotsFarFirst(BeyondDotDrawItem* items, size_t count) {
   }
 }
 
-void drawAircraft() {
+uint32_t hashMix(uint32_t h, uint32_t v) {
+  return h ^ (v + 0x9e3779b9U + (h << 6) + (h >> 2));
+}
+
+uint32_t hashString(uint32_t h, const char* s) {
+  for (; *s != '\0'; ++s) {
+    h = hashMix(h, static_cast<uint32_t>(*s));
+  }
+  return h;
+}
+
+uint32_t hashAircraftItem(const AircraftDrawItem& item,
+                          const services::adsb::Aircraft& plane) {
+  uint32_t h = 0;
+  h = hashMix(h, static_cast<uint32_t>(item.x));
+  h = hashMix(h, static_cast<uint32_t>(item.y));
+  h = hashMix(h, static_cast<uint32_t>(static_cast<int>(lroundf(plane.nose_deg))));
+  h = hashMix(h, static_cast<uint32_t>(speedLineLengthPx(plane.gs_knots)));
+  h = hashMix(h, static_cast<uint32_t>(static_cast<int>(lroundf(plane.track_deg))));
+  h = hashString(h, plane.callsign);
+  h = hashString(h, plane.type);
+  h = hashString(h, plane.alt);
+  return h;
+}
+
+uint32_t hashBeyondDot(const BeyondDotDrawItem& dot) {
+  uint32_t h = 0;
+  h = hashMix(h, static_cast<uint32_t>(dot.x));
+  h = hashMix(h, static_cast<uint32_t>(dot.y));
+  return h;
+}
+
+uint32_t frameSignature(const AircraftDrawItem* items, size_t draw_count,
+                        const BeyondDotDrawItem* dots, size_t dot_count) {
+  const services::adsb::Aircraft* planes = services::adsb::aircraftList();
+  uint32_t sig = hashMix(0, static_cast<uint32_t>(draw_count));
+  sig = hashMix(sig, static_cast<uint32_t>(dot_count));
+  for (size_t d = 0; d < draw_count; ++d) {
+    sig ^= hashAircraftItem(items[d], planes[items[d].index]);
+  }
+  for (size_t d = 0; d < dot_count; ++d) {
+    sig ^= hashBeyondDot(dots[d]);
+  }
+  return sig;
+}
+
+void computeDrawItems(AircraftDrawItem* items, size_t* draw_count,
+                      BeyondDotDrawItem* dots, size_t* dot_count) {
   initLabelMetrics();
 
   const size_t n = services::adsb::aircraftCount();
   const services::adsb::Aircraft* planes = services::adsb::aircraftList();
 
-  AircraftDrawItem items[services::adsb::kMaxAircraft];
-  BeyondDotDrawItem dots[services::adsb::kMaxAircraft];
-  size_t draw_count = 0;
-  size_t dot_count = 0;
+  *draw_count = 0;
+  *dot_count = 0;
 
   for (size_t i = 0; i < n; ++i) {
     float dx_km = 0.0f;
@@ -501,11 +548,11 @@ void drawAircraft() {
       int x = 0;
       int y = 0;
       latLonToScreen(planes[i].lat, planes[i].lon, &x, &y);
-      items[draw_count].index = i;
-      items[draw_count].x = x;
-      items[draw_count].y = y;
-      items[draw_count].dist_sq = distSqFromCenter(x, y);
-      ++draw_count;
+      items[*draw_count].index = i;
+      items[*draw_count].x = x;
+      items[*draw_count].y = y;
+      items[*draw_count].dist_sq = distSqFromCenter(x, y);
+      ++(*draw_count);
       continue;
     }
 
@@ -515,18 +562,24 @@ void drawAircraft() {
                                      &dot_y)) {
       continue;
     }
-    dots[dot_count].x = dot_x;
-    dots[dot_count].y = dot_y;
-    dots[dot_count].dist_sq = distSqFromCenter(dot_x, dot_y);
-    ++dot_count;
+    dots[*dot_count].x = dot_x;
+    dots[*dot_count].y = dot_y;
+    dots[*dot_count].dist_sq = distSqFromCenter(dot_x, dot_y);
+    ++(*dot_count);
   }
 
-  sortBeyondDotsFarFirst(dots, dot_count);
+  sortBeyondDotsFarFirst(dots, *dot_count);
+  sortDrawItemsFarFirst(items, *draw_count);
+}
+
+void drawItems(const AircraftDrawItem* items, size_t draw_count,
+               const BeyondDotDrawItem* dots, size_t dot_count) {
+  const services::adsb::Aircraft* planes = services::adsb::aircraftList();
+
   for (size_t d = 0; d < dot_count; ++d) {
     drawBeyondRingDot(dots[d].x, dots[d].y);
   }
 
-  sortDrawItemsFarFirst(items, draw_count);
   for (size_t d = 0; d < draw_count; ++d) {
     const size_t i = items[d].index;
     const int x = items[d].x;
@@ -670,11 +723,12 @@ bool ensureFrameSprite() {
 // Double-buffered frame: composite the grid AND aircraft into the off-screen
 // sprite, then blit it to the panel in a single pushSprite. Because the panel
 // is updated in one pass, labels never show an erase/redraw gap — no flicker.
-void renderFrame() {
+void renderFrame(const AircraftDrawItem* items, size_t draw_count,
+                 const BeyondDotDrawItem* dots, size_t dot_count) {
   drawStaticGrid(s_frame);  // opens its own DrawScope(s_frame)
   {
     const DrawScope scope(s_frame);
-    drawAircraft();
+    drawItems(items, draw_count, dots, dot_count);
   }
   s_frame.pushSprite(0, 0);
   tft.setTextDatum(textdatum_t::top_left);
@@ -686,23 +740,44 @@ void radarDisplayDraw() {
   initPalette();
   initLabelMetrics();
 
+  AircraftDrawItem items[services::adsb::kMaxAircraft];
+  BeyondDotDrawItem dots[services::adsb::kMaxAircraft];
+  size_t draw_count = 0;
+  size_t dot_count = 0;
+  computeDrawItems(items, &draw_count, dots, &dot_count);
+
   if (ensureFrameSprite()) {
-    renderFrame();
-    return;
+    renderFrame(items, draw_count, dots, dot_count);
+  } else {
+    // Fallback when the sprite can't be allocated: draw straight to the panel.
+    const DrawScope scope(tft);
+    drawStaticGrid(tft);
+    drawItems(items, draw_count, dots, dot_count);
+    tft.setTextDatum(textdatum_t::top_left);
   }
 
-  // Fallback when the sprite can't be allocated: draw straight to the panel.
-  const DrawScope scope(tft);
-  drawStaticGrid(tft);
-  drawAircraft();
-  tft.setTextDatum(textdatum_t::top_left);
+  s_last_frame_sig = frameSignature(items, draw_count, dots, dot_count);
+  s_have_frame_sig = true;
 }
 
 void radarDisplayRefreshAircraft() {
   initPalette();
 
+  AircraftDrawItem items[services::adsb::kMaxAircraft];
+  BeyondDotDrawItem dots[services::adsb::kMaxAircraft];
+  size_t draw_count = 0;
+  size_t dot_count = 0;
+  computeDrawItems(items, &draw_count, dots, &dot_count);
+
+  const uint32_t sig = frameSignature(items, draw_count, dots, dot_count);
+  if (s_have_frame_sig && sig == s_last_frame_sig) {
+    return;
+  }
+  s_last_frame_sig = sig;
+  s_have_frame_sig = true;
+
   if (ensureFrameSprite()) {
-    renderFrame();
+    renderFrame(items, draw_count, dots, dot_count);
     return;
   }
 
