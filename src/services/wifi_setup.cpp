@@ -15,6 +15,7 @@
 
 #include "config.h"
 #include "services/radar_location.h"
+#include "services/radar_portal.h"
 #include "ui/radar_range.h"
 #include "ui/status_screens.h"
 
@@ -223,6 +224,12 @@ void ensureWifiManager() {
                            IPAddress(255, 255, 255, 0));
   s_wm.setHostname(config::kPortalHostname);
   s_wm.setAPCallback(onConfigPortalApStarted);
+  s_wm.setWebServerCallback([]() { services::radar_portal::registerRoutes(s_wm); });
+  static const char* kMenu[] = {
+      "wifi", "info", "custom", "exit", "sep", "update",
+  };
+  s_wm.setMenu(kMenu, sizeof(kMenu) / sizeof(kMenu[0]));
+  s_wm.setCustomMenuHTML(services::radar_portal::menuLinkHtml());
   attachPortalParams(s_wm);
   s_wm_configured = true;
 }

@@ -21,26 +21,28 @@ unsigned long g_wifi_down_since = 0;
 unsigned long g_last_reconnect_ms = 0;
 unsigned long g_last_adsb_fetch_ms = 0;
 
+void applyPendingRangeRedraw() {
+  if (!ui::radar::rangeDirty()) {
+    return;
+  }
+  if (!g_radar_visible || WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+  ui::radar::clearRangeDirty();
+  ui::radarDisplayDraw();
+}
+
 void showRadarIfConnected() {
   if (WiFi.status() != WL_CONNECTED) {
     g_radar_visible = false;
     return;
   }
   ui::radarDisplayDraw();
+  ui::radar::clearRangeDirty();
   g_radar_visible = true;
 }
 
-void onRangeTap() {
-  ui::radar::rangeNext();
-  char range_label[12];
-  ui::radar::formatCurrentRing3Label(range_label, sizeof(range_label));
-  Serial.printf("Range: %s (outer ~%.0f km)\n", range_label,
-                ui::radar::rangeCurrent().outer_km);
-
-  if (g_radar_visible && WiFi.status() == WL_CONNECTED) {
-    ui::radarDisplayDraw();
-  }
-}
+void onRangeTap() { ui::radar::rangeNext(); }
 
 void handleBootButton() {
   bootButtonPollLongPress();
@@ -85,6 +87,7 @@ void setup() {
 void loop() {
   handleBootButton();
   wifiLoop();
+  applyPendingRangeRedraw();
 
   if (WiFi.status() != WL_CONNECTED) {
     if (g_radar_visible) {
@@ -109,9 +112,15 @@ void loop() {
     g_wifi_down_since = 0;
     if (!g_radar_visible) {
       showRadarIfConnected();
-    } else if (millis() - g_last_adsb_fetch_ms >= config::kAdsbFetchIntervalMs) {
-      g_last_adsb_fetch_ms = millis();
-      fetchAndDrawAircraft();
+    } else {
+      if (ui::radar::pollTimerReset()) {
+        ui::radar::clearPollTimerReset();
+        g_last_adsb_fetch_ms = millis();
+      }
+      if (millis() - g_last_adsb_fetch_ms >= ui::radar::pollIntervalMs()) {
+        g_last_adsb_fetch_ms = millis();
+        fetchAndDrawAircraft();
+      }
     }
   }
 

@@ -48,7 +48,7 @@ constexpr bool kDisplayRgbOrder = true;
 constexpr double kDefaultRadarLat = 52.3676;
 constexpr double kDefaultRadarLon = 4.9041;
 
-/** Poll adsb.fi (API public limit: 1 req/s). */
+/** Default poll interval (ms); runtime value from NVS via ui::radar::pollIntervalMs(). */
 constexpr unsigned long kAdsbFetchIntervalMs = 3000;
 /** Legacy scale unused — fetch uses radar::fetchRadiusKm() to screen edge. */
 constexpr float kAdsbFetchRadiusScale = 1.0f;

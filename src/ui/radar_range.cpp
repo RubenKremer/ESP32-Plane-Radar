@@ -2,6 +2,7 @@
 
 #include "ui/radar_theme.h"
 
+#include <Arduino.h>
 #include <Preferences.h>
 #include <cmath>
 #include <cstdio>
@@ -15,13 +16,17 @@ constexpr char kPrefsNamespace[] = "planeradar";
 constexpr char kPrefsRangeKey[] = "rangeIdx";
 constexpr char kPrefsMilesKey[] = "useMiles";
 constexpr char kPrefsRunwaysKey[] = "showRwys";
+constexpr char kPrefsPollKey[] = "pollIdx";
 constexpr uint8_t kDefaultRangeIndex = 1;  // 10 km ring
 constexpr float kKmPerMile = 1.609344f;
 
 Preferences s_prefs;
 uint8_t s_range_index = kDefaultRangeIndex;
+uint8_t s_poll_index = kDefaultPollIntervalIndex;
 bool s_use_miles = false;
 bool s_show_runways = true;
+bool s_range_dirty = false;
+bool s_poll_timer_reset = false;
 
 void saveRangeIndex() {
   if (!s_prefs.begin(kPrefsNamespace, false)) {
@@ -44,6 +49,14 @@ void saveShowRunways() {
     return;
   }
   s_prefs.putBool(kPrefsRunwaysKey, s_show_runways);
+  s_prefs.end();
+}
+
+void savePollIndex() {
+  if (!s_prefs.begin(kPrefsNamespace, false)) {
+    return;
+  }
+  s_prefs.putUChar(kPrefsPollKey, s_poll_index);
   s_prefs.end();
 }
 
@@ -70,13 +83,39 @@ void rangeInit() {
       (saved < kRangePresetCount) ? saved : kDefaultRangeIndex;
   s_use_miles = s_prefs.getBool(kPrefsMilesKey, false);
   s_show_runways = s_prefs.getBool(kPrefsRunwaysKey, true);
+  const uint8_t saved_poll =
+      s_prefs.getUChar(kPrefsPollKey, kDefaultPollIntervalIndex);
+  s_poll_index = (saved_poll < kPollIntervalPresetCount)
+                     ? saved_poll
+                     : kDefaultPollIntervalIndex;
   s_prefs.end();
 }
 
 void rangeNext() {
-  s_range_index = static_cast<uint8_t>((s_range_index + 1) % kRangePresetCount);
-  saveRangeIndex();
+  setRangeIndex(static_cast<uint8_t>((s_range_index + 1) % kRangePresetCount));
 }
+
+bool setRangeIndex(uint8_t idx) {
+  if (idx >= kRangePresetCount) {
+    return false;
+  }
+  if (idx == s_range_index) {
+    s_range_dirty = false;
+    return true;
+  }
+  s_range_index = idx;
+  saveRangeIndex();
+  s_range_dirty = true;
+  char range_label[12];
+  formatCurrentRing3Label(range_label, sizeof(range_label));
+  Serial.printf("Range: %s (outer ~%.0f km)\n", range_label,
+                rangeCurrent().outer_km);
+  return true;
+}
+
+bool rangeDirty() { return s_range_dirty; }
+
+void clearRangeDirty() { s_range_dirty = false; }
 
 const RangePreset& rangeCurrent() { return kRangePresets[s_range_index]; }
 
@@ -117,6 +156,41 @@ void formatRing3Label(char* buf, size_t len, float ring3_km, bool use_miles) {
 
 void formatCurrentRing3Label(char* buf, size_t len) {
   formatRing3Label(buf, len, rangeCurrent().ring3_km, s_use_miles);
+}
+
+void formatRing3PresetOption(char* buf, size_t len, float ring3_km) {
+  const int km = static_cast<int>(lroundf(ring3_km));
+  const int mi = static_cast<int>(lroundf(ring3_km / kKmPerMile));
+  snprintf(buf, len, "%d km / %d mi", km, mi);
+}
+
+unsigned long pollIntervalMs() {
+  return kPollIntervalPresetsMs[s_poll_index];
+}
+
+uint8_t pollIntervalIndex() { return s_poll_index; }
+
+bool setPollIntervalIndex(uint8_t idx) {
+  if (idx >= kPollIntervalPresetCount) {
+    return false;
+  }
+  if (idx == s_poll_index) {
+    return true;
+  }
+  s_poll_index = idx;
+  savePollIndex();
+  s_poll_timer_reset = true;
+  Serial.printf("Poll interval: %lu s\n", pollIntervalMs() / 1000UL);
+  return true;
+}
+
+bool pollTimerReset() { return s_poll_timer_reset; }
+
+void clearPollTimerReset() { s_poll_timer_reset = false; }
+
+void formatPollIntervalOption(char* buf, size_t len, unsigned long interval_ms) {
+  const unsigned long sec = interval_ms / 1000UL;
+  snprintf(buf, len, "%lu second%s", sec, sec == 1UL ? "" : "s");
 }
 
 void unitsReset() {

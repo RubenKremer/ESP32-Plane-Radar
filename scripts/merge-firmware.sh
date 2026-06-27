@@ -28,12 +28,27 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if command -v pio >/dev/null 2>&1; then
+PIO=""
+for candidate in \
+  "${HOME}/.local/bin/pio" \
+  "${HOME}/.platformio/penv/bin/pio"; do
+  if [[ -x "$candidate" ]] && "$candidate" --version >/dev/null 2>&1; then
+    PIO="$candidate"
+    break
+  fi
+done
+if [[ -z "$PIO" ]] && command -v pio >/dev/null 2>&1 && pio --version >/dev/null 2>&1; then
   PIO=pio
-elif [[ -x "${HOME}/.platformio/penv/bin/pio" ]]; then
-  PIO="${HOME}/.platformio/penv/bin/pio"
-else
-  echo "PlatformIO (pio) not found in PATH" >&2
+fi
+if [[ -z "$PIO" ]]; then
+  cat >&2 <<'EOF'
+PlatformIO (pio) not found or broken.
+
+Install a current PlatformIO (the apt/system package is too old for Python 3.12):
+  pipx install platformio
+
+Or: curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core-installer/master/get-platformio.py | python3 -
+EOF
   exit 1
 fi
 
