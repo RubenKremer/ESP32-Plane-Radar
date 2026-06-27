@@ -21,6 +21,8 @@ After Wi‑Fi is saved, the device reconnects automatically; the radar runs in t
 | **Hold 3 s** | Enable or disable the **LAN config portal** (shows IP while holding; release to return to radar). Off by default each boot. |
 | **Hold 15 s** | Factory reset — clears Wi‑Fi, location, and units; reboots into setup portal (release to confirm). Hold time was lengthened from 10 s to **15 s** to reduce accidental resets. |
 
+**Cold boot (power-on):** holding BOOT while plugging in or resetting does **not** wipe Wi‑Fi or open the setup portal. BOOT gestures apply only after the firmware has started. To factory-reset, use the **15 s hold** above while the device is running.
+
 When the LAN portal is enabled, a **purple dot** appears under **N** on the radar. Open **`http://<device-ip>`** in a browser to change settings.
 
 ## Wi‑Fi setup portal
@@ -53,7 +55,7 @@ The same portal runs on the setup AP and on the device’s LAN IP while connecte
 
 **Configure WiFi** is Wi‑Fi credentials only — location and display options are on **Radar settings**.
 
-After a reset, the device reboots and shows the setup screen immediately (no “Connecting” loop on stale credentials).
+After a **factory reset** (15 s BOOT hold), the device reboots and opens the setup portal on the next boot (no “Connecting” loop on stale credentials). That one-time behavior is stored in NVS — a normal power cycle afterward reconnects using saved Wi‑Fi as usual.
 
 ## Radar display
 
