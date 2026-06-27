@@ -45,10 +45,13 @@ constexpr auto& kPortalGfxEmphasis = fonts::FreeSansBold18pt7b;
 constexpr auto& kConnectingGfxDetail = fonts::FreeSans9pt7b;
 
 struct TextLine {
-  const char* text;
+  const char* text;  // nullptr = vertical gap (no text drawn)
   float vlw_size;
   const lgfx::GFXfont* gfx_font;
 };
+
+/** Blank line sized like portal body text — use between title block and footer hint. */
+constexpr TextLine kPortalBodyGap = {nullptr, 1.0f, &kPortalGfxBody};
 
 int lineHeightGfx(const lgfx::GFXfont* font) {
   displayFontSetBitmap(tft, font);
@@ -91,7 +94,9 @@ void drawTextBlock(uint16_t bg, uint16_t fg, const TextLine* lines, size_t count
     const int h =
         displayFontIsSmooth() ? lineHeightVlw(lines[i].vlw_size)
                               : lineHeightGfx(lines[i].gfx_font);
-    tft.drawString(lines[i].text, kCenterX, y + h / 2);
+    if (lines[i].text != nullptr) {
+      tft.drawString(lines[i].text, kCenterX, y + h / 2);
+    }
     y += h + kLineGap;
   }
 }
@@ -245,8 +250,8 @@ void statusScreenPortalEnabled(const char* ip) {
   const TextLine lines[] = {
       {"Portal enabled", 1.12f, &kPortalGfxTitle},
       {addr, 1.15f, &kPortalGfxEmphasis},
-      {"You can release now", 1.0f, &kPortalGfxBody},
-      {"or hold for reset", 0.95f, &kPortalGfxBody},
+      kPortalBodyGap,
+      {"Hold for reset", 0.95f, &kPortalGfxBody},
   };
   drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
                 sizeof(lines) / sizeof(lines[0]));
@@ -254,9 +259,10 @@ void statusScreenPortalEnabled(const char* ip) {
 
 void statusScreenPortalDisabling() {
   const TextLine lines[] = {
-      {"Portal will", 1.12f, &kPortalGfxTitle},
-      {"be disabled", 1.12f, &kPortalGfxTitle},
-      {"Release now", 1.0f, &kPortalGfxBody},
+      {"Portal is", 1.12f, &kPortalGfxTitle},
+      {"now disabled", 1.12f, &kPortalGfxTitle},
+      kPortalBodyGap,
+      {"Hold for reset", 1.0f, &kPortalGfxBody},
   };
   drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
                 sizeof(lines) / sizeof(lines[0]));
