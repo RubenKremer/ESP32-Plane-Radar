@@ -14,5 +14,9 @@ bool wifiBootButtonPressed();
 void bootButtonInit();
 /** Latched short tap (survives blocking HTTP/display work). */
 bool bootButtonConsumeTap();
-/** Call each loop iteration; triggers WiFi reset on long hold. */
-void bootButtonPollLongPress();
+/** Call each loop iteration; handles 3 s portal toggle and 10 s factory reset. */
+void bootButtonPoll();
+bool bootButtonHoldScreenActive();
+bool bootButtonConsumeRadarRedraw();
+/** True when the user has enabled the LAN config portal this session. */
+bool wifiLanPortalEnabled();

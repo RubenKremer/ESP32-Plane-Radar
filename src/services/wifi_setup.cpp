@@ -3,7 +3,8 @@
 #include <WiFi.h>
 #include "services/wifi_manager_ex.h"
 
-#include <cstdio>
+#include <cstdint>
+#include <cstring>
 
 #include <Preferences.h>
 #include <esp_system.h>
@@ -23,7 +24,6 @@ portMUX_TYPE s_boot_mux = portMUX_INITIALIZER_UNLOCKED;
 volatile bool s_boot_tap_pending = false;
 volatile bool s_boot_is_down = false;
 volatile unsigned long s_boot_down_ms = 0;
-bool s_long_press_handled = false;
 bool s_boot_interrupt_attached = false;
 
 void IRAM_ATTR onBootButtonIsr() {
@@ -35,7 +35,7 @@ void IRAM_ATTR onBootButtonIsr() {
     s_boot_down_ms = now;
   } else if (s_boot_is_down) {
     const unsigned long held = now - s_boot_down_ms;
-    if (held >= config::kBootTapMinMs && held < config::kBootResetHoldMs) {
+    if (held >= config::kBootTapMinMs && held < config::kBootPortalHoldMs) {
       s_boot_tap_pending = true;
     }
     s_boot_is_down = false;
@@ -62,6 +62,41 @@ constexpr char kPrefsForcePortalKey[] = "portal";
 bool s_force_config_portal = false;
 WiFiManagerEx s_wm;
 bool s_wm_configured = false;
+bool s_portal_enabled = false;
+
+enum HoldStage : uint8_t {
+  kHoldNone = 0,
+  kHoldPortal = 1,
+  kHoldFactoryReset = 2,
+};
+
+enum PortalStatusKind : uint8_t {
+  kPortalStatusNone = 0,
+  kPortalStatusEnabled,
+  kPortalStatusDisabling,
+};
+
+bool s_hold_tracking = false;
+unsigned long s_hold_down_ms = 0;
+HoldStage s_hold_stage = kHoldNone;
+bool s_hold_screen_active = false;
+bool s_portal_disable_on_release = false;
+bool s_pending_radar_redraw = false;
+bool s_portal_status_pending_dismiss = false;
+unsigned long s_portal_screen_shown_ms = 0;
+PortalStatusKind s_portal_status_kind = kPortalStatusNone;
+char s_portal_status_ip[16] = {};
+
+void pollPortalStatusDismiss();
+void showPortalStatusScreen(PortalStatusKind kind, const char* ip);
+void redrawPortalStatusScreen();
+void clearPortalStatusScreen();
+
+void enableLanPortal();
+void disableLanPortal();
+void enterPortalHoldStage();
+void enterFactoryResetHoldStage();
+void finishHoldOnRelease();
 
 void ensureWifiManager();
 void applyApPortalMenu();
@@ -130,6 +165,7 @@ bool storedWifiCredentials() {
 }
 
 void eraseWifiCredentials() {
+  s_portal_enabled = false;
   stopLanWebPortal();
   WiFi.setAutoReconnect(false);
   WiFi.mode(WIFI_OFF);
@@ -229,6 +265,122 @@ void stopLanWebPortal() {
 #endif
 }
 
+void enableLanPortal() {
+  s_portal_enabled = true;
+  if (wifiLinkUp()) {
+    startLanWebPortal();
+  }
+  Serial.println("LAN portal enabled");
+}
+
+void disableLanPortal() {
+  s_portal_enabled = false;
+  stopLanWebPortal();
+  Serial.println("LAN portal disabled");
+}
+
+void showPortalStatusScreen(PortalStatusKind kind, const char* ip) {
+  s_portal_status_kind = kind;
+  s_portal_status_ip[0] = '\0';
+  if (ip != nullptr && ip[0] != '\0') {
+    strncpy(s_portal_status_ip, ip, sizeof(s_portal_status_ip) - 1);
+    s_portal_status_ip[sizeof(s_portal_status_ip) - 1] = '\0';
+  }
+  s_portal_screen_shown_ms = millis();
+  if (kind == kPortalStatusEnabled) {
+    statusScreenPortalEnabled(s_portal_status_ip);
+  } else if (kind == kPortalStatusDisabling) {
+    statusScreenPortalDisabling();
+  }
+}
+
+void redrawPortalStatusScreen() {
+  if (s_portal_status_kind == kPortalStatusEnabled) {
+    statusScreenPortalEnabled(s_portal_status_ip);
+  } else if (s_portal_status_kind == kPortalStatusDisabling) {
+    statusScreenPortalDisabling();
+  }
+}
+
+void clearPortalStatusScreen() {
+  s_portal_status_kind = kPortalStatusNone;
+  s_portal_status_ip[0] = '\0';
+  s_portal_screen_shown_ms = 0;
+}
+
+void enterPortalHoldStage() {
+  s_hold_stage = kHoldPortal;
+  if (!wifiLinkUp()) {
+    return;
+  }
+  s_hold_screen_active = true;
+  if (s_portal_enabled) {
+    s_portal_disable_on_release = true;
+    showPortalStatusScreen(kPortalStatusDisabling, nullptr);
+  } else {
+    s_portal_disable_on_release = false;
+    enableLanPortal();
+    static char ip_buf[16];
+    WiFi.localIP().toString().toCharArray(ip_buf, sizeof(ip_buf));
+    showPortalStatusScreen(kPortalStatusEnabled, ip_buf);
+  }
+}
+
+void enterFactoryResetHoldStage() {
+  s_portal_status_pending_dismiss = false;
+  clearPortalStatusScreen();
+  s_hold_stage = kHoldFactoryReset;
+  s_hold_screen_active = true;
+  statusScreenFactoryResetPending();
+}
+
+void pollPortalStatusDismiss() {
+  if (!s_portal_status_pending_dismiss || s_portal_screen_shown_ms == 0) {
+    return;
+  }
+  redrawPortalStatusScreen();
+  if (millis() - s_portal_screen_shown_ms < config::kPortalStatusMinDisplayMs) {
+    return;
+  }
+  s_portal_status_pending_dismiss = false;
+  s_hold_screen_active = false;
+  clearPortalStatusScreen();
+  if (wifiLinkUp()) {
+    s_pending_radar_redraw = true;
+  }
+}
+
+void finishHoldOnRelease() {
+  if (s_hold_stage == kHoldFactoryReset) {
+    s_portal_status_pending_dismiss = false;
+    clearPortalStatusScreen();
+    Serial.println("BOOT held — factory reset");
+    wifiResetCredentialsAndReboot();
+    return;
+  }
+
+  if (s_hold_stage == kHoldPortal) {
+    if (s_portal_disable_on_release) {
+      disableLanPortal();
+    }
+    if (s_portal_status_kind != kPortalStatusNone) {
+      s_portal_status_pending_dismiss = true;
+      s_hold_screen_active = true;
+      redrawPortalStatusScreen();
+    } else {
+      s_hold_screen_active = false;
+      if (wifiLinkUp()) {
+        s_pending_radar_redraw = true;
+      }
+    }
+  } else {
+    s_hold_screen_active = false;
+  }
+
+  s_hold_stage = kHoldNone;
+  s_portal_disable_on_release = false;
+}
+
 void prepareSta() {
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(WIFI_PS_NONE);
@@ -250,8 +402,10 @@ bool waitForLinkWithUi(const char* ssid_for_ui, unsigned long attempt_ms) {
     if (wifiLinkUp()) {
       return true;
     }
-    bootButtonPollLongPress();
-    statusScreenConnectingTick();
+    bootButtonPoll();
+    if (!bootButtonHoldScreenActive()) {
+      statusScreenConnectingTick();
+    }
     delay(config::kWifiConnectingFrameMs);
   }
   return wifiLinkUp();
@@ -310,7 +464,7 @@ bool openConfigPortal() {
   applyApPortalMenu();
   s_wm.startConfigPortal(config::kPortalApName);
   while (s_wm.getConfigPortalActive()) {
-    bootButtonPollLongPress();
+    bootButtonPoll();
     if (s_wm.process()) {
       return true;
     }
@@ -350,29 +504,49 @@ bool bootButtonConsumeTap() {
   return tap;
 }
 
-void bootButtonPollLongPress() {
-  if (wifiBootButtonPressed()) {
-    portENTER_CRITICAL(&s_boot_mux);
-    if (!s_boot_is_down) {
-      s_boot_is_down = true;
-      s_boot_down_ms = millis();
-    }
-    const unsigned long down_ms = s_boot_down_ms;
-    portEXIT_CRITICAL(&s_boot_mux);
+void bootButtonPoll() {
+  pollPortalStatusDismiss();
 
-    if (!s_long_press_handled &&
-        millis() - down_ms >= config::kBootResetHoldMs) {
-      s_long_press_handled = true;
-      Serial.println("BOOT held — resetting WiFi");
-      wifiResetCredentialsAndReboot();
+  if (wifiBootButtonPressed()) {
+    if (!s_hold_tracking) {
+      s_hold_tracking = true;
+      s_hold_down_ms = millis();
+      s_hold_stage = kHoldNone;
+      s_portal_disable_on_release = false;
+    } else {
+      const unsigned long held = millis() - s_hold_down_ms;
+      if (s_hold_stage < kHoldFactoryReset &&
+          held >= config::kBootFactoryResetHoldMs) {
+        enterFactoryResetHoldStage();
+      } else if (s_hold_stage < kHoldPortal &&
+                 held >= config::kBootPortalHoldMs) {
+        enterPortalHoldStage();
+      }
     }
-  } else {
-    portENTER_CRITICAL(&s_boot_mux);
-    s_boot_is_down = false;
-    portEXIT_CRITICAL(&s_boot_mux);
-    s_long_press_handled = false;
+    return;
   }
+
+  if (!s_hold_tracking) {
+    return;
+  }
+
+  s_hold_tracking = false;
+  finishHoldOnRelease();
 }
+
+bool bootButtonHoldScreenActive() {
+  return s_hold_screen_active || s_portal_status_pending_dismiss;
+}
+
+bool bootButtonConsumeRadarRedraw() {
+  if (!s_pending_radar_redraw) {
+    return false;
+  }
+  s_pending_radar_redraw = false;
+  return true;
+}
+
+bool wifiLanPortalEnabled() { return s_portal_enabled; }
 
 void wifiResetCredentialsAndReboot() {
   resetWifiCredentials();
@@ -389,15 +563,20 @@ bool wifiReconnect() {
 
 void wifiLoop() {
   ensureWifiManager();
+  pollPortalStatusDismiss();
   if (wifiLinkUp()) {
-    if (!s_wm.getWebPortalActive() && !s_wm.getConfigPortalActive()) {
-      startLanWebPortal();
+    if (s_portal_enabled) {
+      if (!s_wm.getWebPortalActive() && !s_wm.getConfigPortalActive()) {
+        startLanWebPortal();
+      }
+      if (s_wm.getWebPortalActive() || s_wm.getConfigPortalActive()) {
+        bootButtonPoll();
+        s_wm.process();
+      }
+    } else if (s_wm.getWebPortalActive()) {
+      stopLanWebPortal();
     }
-    if (s_wm.getWebPortalActive() || s_wm.getConfigPortalActive()) {
-      bootButtonPollLongPress();
-      s_wm.process();
-    }
-  } else {
+  } else if (s_wm.getWebPortalActive()) {
     stopLanWebPortal();
   }
 }

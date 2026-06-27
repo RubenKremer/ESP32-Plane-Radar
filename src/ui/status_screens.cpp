@@ -224,7 +224,7 @@ void statusScreenConnectFailed() {
       {"Could not connect", 1.15f, &kGfxTitle},
       {"Check Wi-Fi password", 1.0f, &kGfxBody},
       {"and signal strength.", 1.0f, &kGfxBody},
-      {"Hold BOOT 3 sec", 1.0f, &kGfxBody},
+      {"Hold BOOT 10 sec", 1.0f, &kGfxBody},
       {"to reset Wi-Fi", 1.0f, &kGfxBody},
   };
   drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
@@ -235,6 +235,37 @@ void statusScreenWifiReset() {
   const TextLine lines[] = {
       {"Wi-Fi reset", 1.15f, &kPortalGfxTitle},
       {"Restarting...", 1.05f, &kPortalGfxBody},
+  };
+  drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
+                sizeof(lines) / sizeof(lines[0]));
+}
+
+void statusScreenPortalEnabled(const char* ip) {
+  const char* addr = (ip != nullptr && ip[0] != '\0') ? ip : "?";
+  const TextLine lines[] = {
+      {"Portal enabled", 1.12f, &kPortalGfxTitle},
+      {addr, 1.15f, &kPortalGfxEmphasis},
+      {"You can release now", 1.0f, &kPortalGfxBody},
+      {"or hold for reset", 0.95f, &kPortalGfxBody},
+  };
+  drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
+                sizeof(lines) / sizeof(lines[0]));
+}
+
+void statusScreenPortalDisabling() {
+  const TextLine lines[] = {
+      {"Portal will", 1.12f, &kPortalGfxTitle},
+      {"be disabled", 1.12f, &kPortalGfxTitle},
+      {"Release now", 1.0f, &kPortalGfxBody},
+  };
+  drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
+                sizeof(lines) / sizeof(lines[0]));
+}
+
+void statusScreenFactoryResetPending() {
+  const TextLine lines[] = {
+      {"Factory reset", 1.12f, &kPortalGfxTitle},
+      {"Release to confirm", 1.0f, &kPortalGfxBody},
   };
   drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
                 sizeof(lines) / sizeof(lines[0]));

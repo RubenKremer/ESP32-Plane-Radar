@@ -25,7 +25,8 @@ void applyPendingRangeRedraw() {
   if (!ui::radar::rangeDirty()) {
     return;
   }
-  if (!g_radar_visible || WiFi.status() != WL_CONNECTED) {
+  if (!g_radar_visible || WiFi.status() != WL_CONNECTED ||
+      bootButtonHoldScreenActive()) {
     return;
   }
   ui::radar::clearRangeDirty();
@@ -37,6 +38,9 @@ void showRadarIfConnected() {
     g_radar_visible = false;
     return;
   }
+  if (bootButtonHoldScreenActive()) {
+    return;
+  }
   ui::radarDisplayDraw();
   ui::radar::clearRangeDirty();
   g_radar_visible = true;
@@ -45,8 +49,12 @@ void showRadarIfConnected() {
 void onRangeTap() { ui::radar::rangeNext(); }
 
 void handleBootButton() {
-  bootButtonPollLongPress();
-  if (bootButtonConsumeTap()) {
+  bootButtonPoll();
+  if (bootButtonConsumeRadarRedraw() && g_radar_visible &&
+      !bootButtonHoldScreenActive()) {
+    ui::radarDisplayDraw();
+  }
+  if (bootButtonConsumeTap() && !bootButtonHoldScreenActive()) {
     onRangeTap();
   }
 }
@@ -58,7 +66,9 @@ void fetchAndDrawAircraft() {
     handleBootButton();
     return;
   }
-  ui::radarDisplayRefreshAircraft();
+  if (!bootButtonHoldScreenActive()) {
+    ui::radarDisplayRefreshAircraft();
+  }
   handleBootButton();
 }
 
@@ -77,7 +87,11 @@ void setup() {
   }
   services::location::init();
   ui::radar::rangeInit();
-  services::adsb::setPollFn(wifiLoop);
+  services::adsb::setPollFn([]() {
+    wifiLoop();
+    bootButtonPoll();
+  });
+  services::adsb::setAbortFn(wifiBootButtonPressed);
 
   if (wifiSetupConnect()) {
     showRadarIfConnected();
@@ -112,12 +126,13 @@ void loop() {
     g_wifi_down_since = 0;
     if (!g_radar_visible) {
       showRadarIfConnected();
-    } else {
+    } else if (g_radar_visible && !bootButtonHoldScreenActive()) {
       if (ui::radar::pollTimerReset()) {
         ui::radar::clearPollTimerReset();
         g_last_adsb_fetch_ms = millis();
       }
-      if (millis() - g_last_adsb_fetch_ms >= ui::radar::pollIntervalMs()) {
+      if (millis() - g_last_adsb_fetch_ms >= ui::radar::pollIntervalMs() &&
+          !wifiBootButtonPressed()) {
         g_last_adsb_fetch_ms = millis();
         fetchAndDrawAircraft();
       }

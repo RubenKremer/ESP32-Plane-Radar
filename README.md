@@ -18,9 +18,10 @@ After Wi‑Fi is saved, the device reconnects automatically; the radar runs in t
 | Action | Effect |
 |--------|--------|
 | **Short tap** | Cycle range preset (5 → 10 → 15 → 25 km); saved to flash (same presets as **Radar settings** in the web portal) |
-| **Hold 3 s** | Clear Wi‑Fi, location, and units; reboot into setup portal |
+| **Hold 3 s** | Enable or disable the **LAN config portal** (shows IP while holding; release to return to radar). Off by default each boot. |
+| **Hold 10 s** | Factory reset — clears Wi‑Fi, location, and units; reboots into setup portal (release to confirm) |
 
-During setup you can also hold BOOT at power-on to force a credential reset (same as the long press).
+When the LAN portal is enabled, a **purple dot** appears under **N** on the radar. Open **`http://<device-ip>`** in a browser to change settings.
 
 ## Wi‑Fi setup portal
 
@@ -32,8 +33,9 @@ During setup you can also hold BOOT at power-on to force a credential reset (sam
 
 **Reconfigure anytime** (after the device is on your network):
 
-1. Open **`http://plane-radar.local`** or **`http://<device-ip>`** (e.g. from your router or serial log at boot)
+1. **Hold BOOT 3 s** to enable the LAN portal (purple dot under **N**), then open **`http://<device-ip>`** in a browser
 2. Change Wi‑Fi, or open **Radar settings** for location, units, range, and poll interval; save
+3. **Hold BOOT 3 s** again to disable the portal when finished
 
 The same portal runs on the setup AP and on the device’s LAN IP while connected to Wi‑Fi. mDNS hostname is `plane-radar` → **plane-radar.local** (`kPortalHostname` in `config.h`). Some clients resolve `.local` slowly; use the IP if needed.
 
@@ -103,7 +105,7 @@ Edit **`include/config.h`** for hardware and behavior:
 |------|----------------|
 | Portal | `kPortalApName`, `kPortalIp`, `kPortalHostname` / `kPortalHostUrl` (mDNS; needs `-DWM_MDNS` in `platformio.ini`) |
 | Wi‑Fi timing | connect attempts, reconnect grace, portal timeout (`0` = no timeout) |
-| BOOT | `kBootPin`, `kBootResetHoldMs`, `kBootTapMinMs` |
+| BOOT | `kBootPin`, `kBootPortalHoldMs`, `kBootFactoryResetHoldMs`, `kBootTapMinMs` |
 | Display SPI | pins, `kDisplayInvert`, `kDisplayRgbOrder`, `kDisplaySpiWriteHz` |
 | Default location | `kDefaultRadarLat`, `kDefaultRadarLon` (until portal overrides) |
 | ADS-B | `kAdsbFetchIntervalMs` (compile-time default only), `kAdsbShowGroundAircraft` |
