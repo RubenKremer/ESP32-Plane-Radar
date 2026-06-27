@@ -17,7 +17,7 @@ After Wi‑Fi is saved, the device reconnects automatically; the radar runs in t
 
 | Action | Effect |
 |--------|--------|
-| **Short tap** | Cycle range preset (5 → 10 → 15 → 25 km); saved to flash |
+| **Short tap** | Cycle range preset (5 → 10 → 15 → 25 km); saved to flash (same presets as **Radar settings** in the web portal) |
 | **Hold 3 s** | Clear Wi‑Fi, location, and units; reboot into setup portal |
 
 During setup you can also hold BOOT at power-on to force a credential reset (same as the long press).
@@ -33,17 +33,22 @@ During setup you can also hold BOOT at power-on to force a credential reset (sam
 **Reconfigure anytime** (after the device is on your network):
 
 1. Open **`http://plane-radar.local`** or **`http://<device-ip>`** (e.g. from your router or serial log at boot)
-2. Change Wi‑Fi, location, units, or runway overlay; save
+2. Change Wi‑Fi, or open **Radar settings** for location, units, range, and poll interval; save
 
 The same portal runs on the setup AP and on the device’s LAN IP while connected to Wi‑Fi. mDNS hostname is `plane-radar` → **plane-radar.local** (`kPortalHostname` in `config.h`). Some clients resolve `.local` slowly; use the IP if needed.
 
-**Custom fields** (stored in NVS):
+**Radar settings** (separate page — root menu link or direct URL):
 
-| Field | Purpose |
-|-------|---------|
-| **Latitude / Longitude** | Radar center and ADS-B query position (defaults in `config.h` until set) |
-| **Display distances in miles** | Ring scale label in **mi** instead of **km** (e.g. `6mi` vs `10km`) |
-| **Show airport runways** | Major-airport runway overlay on the radar (off to hide) |
+- **`http://plane-radar.local/radar-settings`** (LAN) or **`http://192.168.4.1/radar-settings`** (setup AP)
+- **Latitude / Longitude** — radar center and ADS-B query position
+- **Display distances in miles** — ring scale in **mi** instead of **km**
+- **Show airport runways** — major-airport runway overlay on/off
+- **Range preset** — 5 / 10 / 15 / 25 km (labels show both km and mi, e.g. `10 km / 6 mi`); same as BOOT short tap
+- **Poll interval** — 3 / 5 / 10 / 15 / 30 seconds (default 3 s)
+- All choices persist across reboot (NVS)
+- While the radar is on screen and Wi‑Fi is connected, saving range updates the ring label immediately; on the setup AP only NVS/serial update until the device joins your network
+
+**Configure WiFi** is Wi‑Fi credentials only — location and display options are on **Radar settings**.
 
 After a reset, the device reboots and shows the setup screen immediately (no “Connecting” loop on stale credentials).
 
@@ -66,12 +71,12 @@ Layout and colors: `include/ui/radar_theme.h`.
 | 15 km / 9 mi | ~20 km |
 | 25 km / 16 mi | ~33.3 km |
 
-Preset and miles/km choice persist across reboot (`planeradar` NVS namespace).
+Preset and miles/km choice persist across reboot (`planeradar` NVS namespace). Change preset with a BOOT short tap or **Radar settings** in the web portal.
 
 ### Runways
 
 - Major airports from OurAirports (`large_airport`); all open runway strips in range (helipads excluded)
-- Teal runway lines with one ICAO label per airport (e.g. `KJFK`); toggle in the Wi‑Fi setup portal
+- Teal runway lines with one ICAO label per airport (e.g. `KJFK`); toggle in **Radar settings**
 - Update the embedded list: `python3 scripts/build_large_airports.py`
 
 ### Aircraft
@@ -86,7 +91,7 @@ As range decreases (or aircraft approach), targets move inward; beyond-ring dots
 
 - Source: `https://opendata.adsb.fi/api/v3/`
 - Fetch radius: `ui::radar::fetchRadiusKm()` — scales with the active preset to roughly the screen edge (so rim dots have data)
-- Poll interval: `kAdsbFetchIntervalMs` (5 s) in `config.h`
+- Poll interval: `ui::radar::pollIntervalMs()` — default **3 s**, configurable in **Radar settings** (3 / 5 / 10 / 15 / 30 s). Presets are **minimum spacing between fetch attempts**; blocking HTTP means slow responses can still approach adsb.fi’s **1 req/s** public limit.
 - Ground aircraft hidden by default (`kAdsbShowGroundAircraft`)
 
 ## Configuration
@@ -100,9 +105,9 @@ Edit **`include/config.h`** for hardware and behavior:
 | BOOT | `kBootPin`, `kBootResetHoldMs`, `kBootTapMinMs` |
 | Display SPI | pins, `kDisplayInvert`, `kDisplayRgbOrder`, `kDisplaySpiWriteHz` |
 | Default location | `kDefaultRadarLat`, `kDefaultRadarLon` (until portal overrides) |
-| ADS-B | `kAdsbFetchIntervalMs`, `kAdsbShowGroundAircraft` |
+| ADS-B | `kAdsbFetchIntervalMs` (compile-time default only), `kAdsbShowGroundAircraft` |
 
-Range presets: `include/ui/radar_range.h` (`kRangePresets`).
+Range and poll presets: `include/ui/radar_range.h` (`kRangePresets`, `kPollIntervalPresetsMs`).
 
 ## Project layout
 
@@ -124,6 +129,7 @@ include/
   services/
     wifi_setup.h
     radar_location.h
+    radar_portal.h
     adsb_client.h
 data/
   ui_font.vlw              — embedded smooth UI font (Noto Sans Bold)

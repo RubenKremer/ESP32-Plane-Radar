@@ -78,6 +78,15 @@ bool saveFromStrings(const char* lat_str, const char* lon_str) {
   return true;
 }
 
+bool validateStrings(const char* lat_str, const char* lon_str) {
+  double lat = 0.0;
+  double lon = 0.0;
+  if (!parseCoord(lat_str, &lat) || !parseCoord(lon_str, &lon)) {
+    return false;
+  }
+  return validLatLon(lat, lon);
+}
+
 void clear() {
   Preferences prefs;
   prefs.begin(kPrefsNamespace, false);

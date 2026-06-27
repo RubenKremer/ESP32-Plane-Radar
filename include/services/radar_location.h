@@ -9,6 +9,9 @@ void init();
 double lat();
 double lon();
 
+/** Parse portal strings and validate; does not persist. */
+bool validateStrings(const char* lat_str, const char* lon_str);
+
 /** Parse portal strings, validate, persist to NVS, update runtime values. */
 bool saveFromStrings(const char* lat_str, const char* lon_str);
 

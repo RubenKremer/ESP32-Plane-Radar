@@ -34,10 +34,21 @@ constexpr RangePreset kRangePresets[] = {
 constexpr size_t kRangePresetCount =
     sizeof(kRangePresets) / sizeof(kRangePresets[0]);
 
-/** Load saved range and distance units from flash. Call once after boot. */
+/** ADS-B poll interval presets (minimum spacing between fetch attempts). */
+constexpr unsigned long kPollIntervalPresetsMs[] = {3000, 5000, 10000, 15000,
+                                                    30000};
+constexpr size_t kPollIntervalPresetCount =
+    sizeof(kPollIntervalPresetsMs) / sizeof(kPollIntervalPresetsMs[0]);
+constexpr uint8_t kDefaultPollIntervalIndex = 0;  // 3 s
+
+/** Load saved range, units, runways, and poll interval from flash. Call once after boot. */
 void rangeInit();
 /** Cycle preset and save to flash. */
 void rangeNext();
+/** Set preset index; persists, logs, and marks dirty on change. Returns false if idx invalid. */
+bool setRangeIndex(uint8_t idx);
+bool rangeDirty();
+void clearRangeDirty();
 const RangePreset& rangeCurrent();
 uint8_t rangeIndex();
 /** ADSB fetch radius (km): scaled to screen edge so beyond-ring dots have data. */
@@ -50,6 +61,17 @@ void saveMilesFromPortal(const char* checkbox_value);
 void saveRunwaysFromPortal(const char* checkbox_value);
 void formatRing3Label(char* buf, size_t len, float ring3_km, bool use_miles);
 void formatCurrentRing3Label(char* buf, size_t len);
+/** Portal dropdown: dual-unit spaced label, e.g. "10 km / 6 mi". */
+void formatRing3PresetOption(char* buf, size_t len, float ring3_km);
+
+unsigned long pollIntervalMs();
+uint8_t pollIntervalIndex();
+bool setPollIntervalIndex(uint8_t idx);
+bool pollTimerReset();
+void clearPollTimerReset();
+/** Portal dropdown label, e.g. "3 seconds". */
+void formatPollIntervalOption(char* buf, size_t len, unsigned long interval_ms);
+
 /** Reset distance units to km (e.g. with WiFi credential wipe). */
 void unitsReset();
 

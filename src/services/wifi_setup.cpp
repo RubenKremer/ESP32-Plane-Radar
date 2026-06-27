@@ -1,7 +1,7 @@
 #include "services/wifi_setup.h"
 
 #include <WiFi.h>
-#include <WiFiManager.h>
+#include "services/wifi_manager_ex.h"
 
 #include <cstdio>
 
@@ -15,6 +15,7 @@
 
 #include "config.h"
 #include "services/radar_location.h"
+#include "services/radar_portal.h"
 #include "ui/radar_range.h"
 #include "ui/status_screens.h"
 
@@ -59,63 +60,22 @@ constexpr char kWifiPrefsNamespace[] = "wifi";
 constexpr char kPrefsForcePortalKey[] = "portal";
 
 bool s_force_config_portal = false;
-WiFiManager s_wm;
+WiFiManagerEx s_wm;
 bool s_wm_configured = false;
 
 void ensureWifiManager();
+void applyApPortalMenu();
+void applyLanPortalMenu();
 void startLanWebPortal();
 void stopLanWebPortal();
 bool wifiLinkUp();
 
-constexpr int kCoordParamLen = 20;
-constexpr char kCoordInputAttrs[] =
-    " type=\"number\" step=\"0.000001\"";
-
-WiFiManagerParameter s_param_lat("radar_lat", "Latitude (deg)", "0",
-                                kCoordParamLen, kCoordInputAttrs);
-WiFiManagerParameter s_param_lon("radar_lon", "Longitude (deg)", "0",
-                                kCoordParamLen, kCoordInputAttrs);
-
-char s_miles_checkbox_attrs[32] = "type=\"checkbox\"";
-WiFiManagerParameter s_param_miles("use_miles", "Display distances in miles", "T", 2,
-                                   s_miles_checkbox_attrs, WFM_LABEL_AFTER);
-
-char s_runways_checkbox_attrs[32] = "type=\"checkbox\"";
-WiFiManagerParameter s_param_runways("show_runways", "Show airport runways", "T", 2,
-                                     s_runways_checkbox_attrs, WFM_LABEL_AFTER);
-
-void refreshPortalParamDefaults() {
-  char lat_buf[kCoordParamLen + 1];
-  char lon_buf[kCoordParamLen + 1];
-  snprintf(lat_buf, sizeof(lat_buf), "%.6f", services::location::lat());
-  snprintf(lon_buf, sizeof(lon_buf), "%.6f", services::location::lon());
-  s_param_lat.setValue(lat_buf, kCoordParamLen);
-  s_param_lon.setValue(lon_buf, kCoordParamLen);
-  snprintf(s_miles_checkbox_attrs, sizeof(s_miles_checkbox_attrs), "type=\"checkbox\"%s",
-           ui::radar::useMiles() ? " checked" : "");
-  s_param_miles.setValue("T", 2);
-  snprintf(s_runways_checkbox_attrs, sizeof(s_runways_checkbox_attrs),
-           "type=\"checkbox\"%s", ui::radar::showRunways() ? " checked" : "");
-  s_param_runways.setValue("T", 2);
-}
-
-void onPortalParamsSaved() {
-  if (!services::location::saveFromStrings(s_param_lat.getValue(),
-                                           s_param_lon.getValue())) {
-    Serial.println("Invalid lat/lon in portal — keeping previous location");
-  }
-  ui::radar::saveMilesFromPortal(s_param_miles.getValue());
-  ui::radar::saveRunwaysFromPortal(s_param_runways.getValue());
-}
-
-void attachPortalParams(WiFiManager& wm) {
-  refreshPortalParamDefaults();
-  wm.addParameter(&s_param_lat);
-  wm.addParameter(&s_param_lon);
-  wm.addParameter(&s_param_miles);
-  wm.addParameter(&s_param_runways);
-  wm.setSaveParamsCallback(onPortalParamsSaved);
-}
+static const char* kMenuAp[] = {
+    "wifi", "info", "custom", "exit", "sep", "update",
+};
+static const char* kMenuLan[] = {
+    "wifi", "info", "custom", "restart", "sep", "update",
+};
 
 void markForceConfigPortal() {
   s_force_config_portal = true;
@@ -214,6 +174,18 @@ bool wifiLinkUp() {
          WiFi.localIP() != IPAddress(0, 0, 0, 0);
 }
 
+void applyApPortalMenu() {
+  s_wm.setMenu(kMenuAp, sizeof(kMenuAp) / sizeof(kMenuAp[0]));
+  s_wm.setCustomMenuHTML(services::radar_portal::menuLinkHtml());
+  s_wm.setShowBack(false);
+}
+
+void applyLanPortalMenu() {
+  s_wm.setMenu(kMenuLan, sizeof(kMenuLan) / sizeof(kMenuLan[0]));
+  s_wm.setCustomMenuHTML(services::radar_portal::menuLinkHtml());
+  s_wm.setShowBack(true);
+}
+
 void ensureWifiManager() {
   if (s_wm_configured) {
     return;
@@ -222,8 +194,9 @@ void ensureWifiManager() {
   s_wm.setAPStaticIPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1),
                            IPAddress(255, 255, 255, 0));
   s_wm.setHostname(config::kPortalHostname);
+  s_wm.setTitle(config::kPortalTitle);
   s_wm.setAPCallback(onConfigPortalApStarted);
-  attachPortalParams(s_wm);
+  s_wm.setWebServerCallback([]() { services::radar_portal::registerRoutes(s_wm); });
   s_wm_configured = true;
 }
 
@@ -232,9 +205,9 @@ void startLanWebPortal() {
       s_wm.getConfigPortalActive()) {
     return;
   }
-  refreshPortalParamDefaults();
   WiFi.mode(WIFI_STA);
   s_wm.setConfigPortalBlocking(false);
+  applyLanPortalMenu();
 #ifdef WM_MDNS
   MDNS.end();
   if (MDNS.begin(config::kPortalHostname)) {
@@ -334,6 +307,7 @@ bool openConfigPortal() {
   delay(50);
   statusScreenPortal();
   s_wm.setConfigPortalBlocking(false);
+  applyApPortalMenu();
   s_wm.startConfigPortal(config::kPortalApName);
   while (s_wm.getConfigPortalActive()) {
     bootButtonPollLongPress();
