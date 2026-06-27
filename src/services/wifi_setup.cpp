@@ -338,7 +338,6 @@ void pollPortalStatusDismiss() {
   if (!s_portal_status_pending_dismiss || s_portal_screen_shown_ms == 0) {
     return;
   }
-  redrawPortalStatusScreen();
   if (millis() - s_portal_screen_shown_ms < config::kPortalStatusMinDisplayMs) {
     return;
   }
@@ -535,7 +534,8 @@ void bootButtonPoll() {
 }
 
 bool bootButtonHoldScreenActive() {
-  return s_hold_screen_active || s_portal_status_pending_dismiss;
+  return s_hold_screen_active || s_portal_status_pending_dismiss ||
+         s_hold_tracking;
 }
 
 bool bootButtonConsumeRadarRedraw() {
@@ -563,7 +563,6 @@ bool wifiReconnect() {
 
 void wifiLoop() {
   ensureWifiManager();
-  pollPortalStatusDismiss();
   if (wifiLinkUp()) {
     if (s_portal_enabled) {
       if (!s_wm.getWebPortalActive() && !s_wm.getConfigPortalActive()) {
