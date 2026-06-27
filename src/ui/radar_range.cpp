@@ -16,8 +16,13 @@ constexpr char kPrefsNamespace[] = "planeradar";
 constexpr char kPrefsRangeKey[] = "rangeIdx";
 constexpr char kPrefsMilesKey[] = "useMiles";
 constexpr char kPrefsAltFeetKey[] = "useAltFt";
+constexpr char kPrefsSpeedKnotsKey[] = "useSpdKt";
 constexpr char kPrefsRunwaysKey[] = "showRwys";
 constexpr char kPrefsAirportLabelsKey[] = "showApLbl";
+constexpr char kPrefsTagCallsignKey[] = "tagCall";
+constexpr char kPrefsTagTypeKey[] = "tagType";
+constexpr char kPrefsTagAltKey[] = "tagAlt";
+constexpr char kPrefsTagSpeedKey[] = "tagSpd";
 constexpr char kPrefsPollKey[] = "pollIdx";
 constexpr uint8_t kDefaultRangeIndex = 1;  // 10 km ring
 constexpr float kKmPerMile = 1.609344f;
@@ -27,8 +32,13 @@ uint8_t s_range_index = kDefaultRangeIndex;
 uint8_t s_poll_index = kDefaultPollIntervalIndex;
 bool s_use_miles = false;
 bool s_use_feet_for_altitude = true;
+bool s_use_knots_for_speed = true;
 bool s_show_runways = true;
 bool s_show_airport_labels = true;
+bool s_show_aircraft_callsign = true;
+bool s_show_aircraft_type = true;
+bool s_show_aircraft_altitude = true;
+bool s_show_aircraft_speed = false;
 bool s_range_dirty = false;
 bool s_poll_timer_reset = false;
 
@@ -56,6 +66,14 @@ void saveUseFeetForAltitude() {
   s_prefs.end();
 }
 
+void saveUseKnotsForSpeed() {
+  if (!s_prefs.begin(kPrefsNamespace, false)) {
+    return;
+  }
+  s_prefs.putBool(kPrefsSpeedKnotsKey, s_use_knots_for_speed);
+  s_prefs.end();
+}
+
 void saveShowRunways() {
   if (!s_prefs.begin(kPrefsNamespace, false)) {
     return;
@@ -69,6 +87,17 @@ void saveShowAirportLabels() {
     return;
   }
   s_prefs.putBool(kPrefsAirportLabelsKey, s_show_airport_labels);
+  s_prefs.end();
+}
+
+void saveAircraftLabelPrefs() {
+  if (!s_prefs.begin(kPrefsNamespace, false)) {
+    return;
+  }
+  s_prefs.putBool(kPrefsTagCallsignKey, s_show_aircraft_callsign);
+  s_prefs.putBool(kPrefsTagTypeKey, s_show_aircraft_type);
+  s_prefs.putBool(kPrefsTagAltKey, s_show_aircraft_altitude);
+  s_prefs.putBool(kPrefsTagSpeedKey, s_show_aircraft_speed);
   s_prefs.end();
 }
 
@@ -103,8 +132,13 @@ void rangeInit() {
       (saved < kRangePresetCount) ? saved : kDefaultRangeIndex;
   s_use_miles = s_prefs.getBool(kPrefsMilesKey, false);
   s_use_feet_for_altitude = s_prefs.getBool(kPrefsAltFeetKey, true);
+  s_use_knots_for_speed = s_prefs.getBool(kPrefsSpeedKnotsKey, true);
   s_show_runways = s_prefs.getBool(kPrefsRunwaysKey, true);
   s_show_airport_labels = s_prefs.getBool(kPrefsAirportLabelsKey, true);
+  s_show_aircraft_callsign = s_prefs.getBool(kPrefsTagCallsignKey, true);
+  s_show_aircraft_type = s_prefs.getBool(kPrefsTagTypeKey, true);
+  s_show_aircraft_altitude = s_prefs.getBool(kPrefsTagAltKey, true);
+  s_show_aircraft_speed = s_prefs.getBool(kPrefsTagSpeedKey, false);
   const uint8_t saved_poll =
       s_prefs.getUChar(kPrefsPollKey, kDefaultPollIntervalIndex);
   s_poll_index = (saved_poll < kPollIntervalPresetCount)
@@ -154,9 +188,24 @@ bool useMiles() { return s_use_miles; }
 
 bool useFeetForAltitude() { return s_use_feet_for_altitude; }
 
+bool useKnotsForSpeed() { return s_use_knots_for_speed; }
+
 bool showRunways() { return s_show_runways; }
 
 bool showAirportLabels() { return s_show_airport_labels; }
+
+bool showAircraftCallsign() { return s_show_aircraft_callsign; }
+
+bool showAircraftType() { return s_show_aircraft_type; }
+
+bool showAircraftAltitude() { return s_show_aircraft_altitude; }
+
+bool showAircraftSpeed() { return s_show_aircraft_speed; }
+
+bool anyAircraftTagEnabled() {
+  return s_show_aircraft_callsign || s_show_aircraft_type ||
+         s_show_aircraft_altitude || s_show_aircraft_speed;
+}
 
 void saveMilesFromPortal(const char* checkbox_value) {
   s_use_miles = portalCheckboxChecked(checkbox_value);
@@ -171,6 +220,13 @@ void saveAltitudeFeetFromPortal(const char* checkbox_value) {
                 s_use_feet_for_altitude ? "feet" : "meters");
 }
 
+void saveSpeedKnotsFromPortal(const char* checkbox_value) {
+  s_use_knots_for_speed = portalCheckboxChecked(checkbox_value);
+  saveUseKnotsForSpeed();
+  Serial.printf("Speed units: %s\n",
+                s_use_knots_for_speed ? "knots" : "km/h");
+}
+
 void saveRunwaysFromPortal(const char* checkbox_value) {
   s_show_runways = portalCheckboxChecked(checkbox_value);
   saveShowRunways();
@@ -181,6 +237,20 @@ void saveAirportLabelsFromPortal(const char* checkbox_value) {
   s_show_airport_labels = portalCheckboxChecked(checkbox_value);
   saveShowAirportLabels();
   Serial.printf("Airport labels: %s\n", s_show_airport_labels ? "on" : "off");
+}
+
+void saveAircraftTagsFromPortal(bool callsign, bool type, bool altitude,
+                                bool speed) {
+  s_show_aircraft_callsign = callsign;
+  s_show_aircraft_type = type;
+  s_show_aircraft_altitude = altitude;
+  s_show_aircraft_speed = speed;
+  saveAircraftLabelPrefs();
+  Serial.printf("Aircraft tags: call=%s type=%s alt=%s spd=%s\n",
+                s_show_aircraft_callsign ? "on" : "off",
+                s_show_aircraft_type ? "on" : "off",
+                s_show_aircraft_altitude ? "on" : "off",
+                s_show_aircraft_speed ? "on" : "off");
 }
 
 void formatRing3Label(char* buf, size_t len, float ring3_km, bool use_miles) {
@@ -232,16 +302,43 @@ void formatPollIntervalOption(char* buf, size_t len, unsigned long interval_ms) 
   snprintf(buf, len, "%lu second%s", sec, sec == 1UL ? "" : "s");
 }
 
+void formatAircraftSpeedLabel(char* buf, size_t len, float gs_knots) {
+  if (len == 0) {
+    return;
+  }
+  buf[0] = '\0';
+  if (gs_knots <= 0.0f) {
+    return;
+  }
+  if (s_use_knots_for_speed) {
+    snprintf(buf, len, "%d kt", static_cast<int>(lroundf(gs_knots)));
+  } else {
+    constexpr float kKnotsToKmh = 1.852f;
+    snprintf(buf, len, "%d km/h",
+             static_cast<int>(lroundf(gs_knots * kKnotsToKmh)));
+  }
+}
+
 void unitsReset() {
   s_use_miles = false;
   s_use_feet_for_altitude = true;
+  s_use_knots_for_speed = true;
   s_show_runways = true;
   s_show_airport_labels = true;
+  s_show_aircraft_callsign = true;
+  s_show_aircraft_type = true;
+  s_show_aircraft_altitude = true;
+  s_show_aircraft_speed = false;
   if (s_prefs.begin(kPrefsNamespace, false)) {
     s_prefs.remove(kPrefsMilesKey);
     s_prefs.remove(kPrefsAltFeetKey);
+    s_prefs.remove(kPrefsSpeedKnotsKey);
     s_prefs.remove(kPrefsRunwaysKey);
     s_prefs.remove(kPrefsAirportLabelsKey);
+    s_prefs.remove(kPrefsTagCallsignKey);
+    s_prefs.remove(kPrefsTagTypeKey);
+    s_prefs.remove(kPrefsTagAltKey);
+    s_prefs.remove(kPrefsTagSpeedKey);
     s_prefs.end();
   }
 }
