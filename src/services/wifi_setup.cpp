@@ -1,7 +1,7 @@
 #include "services/wifi_setup.h"
 
 #include <WiFi.h>
-#include <WiFiManager.h>
+#include "services/wifi_manager_ex.h"
 
 #include <cstdio>
 
@@ -60,7 +60,7 @@ constexpr char kWifiPrefsNamespace[] = "wifi";
 constexpr char kPrefsForcePortalKey[] = "portal";
 
 bool s_force_config_portal = false;
-WiFiManager s_wm;
+WiFiManagerEx s_wm;
 bool s_wm_configured = false;
 
 void ensureWifiManager();
@@ -177,11 +177,13 @@ bool wifiLinkUp() {
 void applyApPortalMenu() {
   s_wm.setMenu(kMenuAp, sizeof(kMenuAp) / sizeof(kMenuAp[0]));
   s_wm.setCustomMenuHTML(services::radar_portal::menuLinkHtml());
+  s_wm.setShowBack(false);
 }
 
 void applyLanPortalMenu() {
   s_wm.setMenu(kMenuLan, sizeof(kMenuLan) / sizeof(kMenuLan[0]));
   s_wm.setCustomMenuHTML(services::radar_portal::menuLinkHtml());
+  s_wm.setShowBack(true);
 }
 
 void ensureWifiManager() {

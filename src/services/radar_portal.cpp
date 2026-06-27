@@ -32,8 +32,6 @@ static const char kPageStyle[] PROGMEM =
     ".wrap{text-align:left;display:inline-block;min-width:260px;max-width:500px}"
     "label.cb{display:block;margin:8px 0}"
     "label.cb input{width:auto;margin-right:8px}"
-    "a{color:#000;font-weight:700;text-decoration:none}"
-    "a:hover{color:#1fa3ec;text-decoration:underline}"
     ".msg{padding:20px;margin:20px 0;border:1px solid #eee;border-left-width:5px;"
     "border-left-color:#777}"
     ".msg.D{border-left-color:#dc3630}"
@@ -72,7 +70,10 @@ String pageHead(const char* title) {
   return page;
 }
 
-String pageFoot() { return F("<br/><a href=\"/\">&laquo; Back</a></div></body></html>"); }
+String pageFoot() {
+  return F("<hr><br/><form action='/' method='get'><button>Back</button></form>"
+           "</div></body></html>");
+}
 
 String buildRangeOptions(uint8_t selected) {
   String opts;
