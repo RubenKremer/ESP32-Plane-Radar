@@ -15,6 +15,7 @@ namespace {
 constexpr char kPrefsNamespace[] = "planeradar";
 constexpr char kPrefsRangeKey[] = "rangeIdx";
 constexpr char kPrefsMilesKey[] = "useMiles";
+constexpr char kPrefsAltFeetKey[] = "useAltFt";
 constexpr char kPrefsRunwaysKey[] = "showRwys";
 constexpr char kPrefsAirportLabelsKey[] = "showApLbl";
 constexpr char kPrefsPollKey[] = "pollIdx";
@@ -25,6 +26,7 @@ Preferences s_prefs;
 uint8_t s_range_index = kDefaultRangeIndex;
 uint8_t s_poll_index = kDefaultPollIntervalIndex;
 bool s_use_miles = false;
+bool s_use_feet_for_altitude = true;
 bool s_show_runways = true;
 bool s_show_airport_labels = true;
 bool s_range_dirty = false;
@@ -43,6 +45,14 @@ void saveUseMiles() {
     return;
   }
   s_prefs.putBool(kPrefsMilesKey, s_use_miles);
+  s_prefs.end();
+}
+
+void saveUseFeetForAltitude() {
+  if (!s_prefs.begin(kPrefsNamespace, false)) {
+    return;
+  }
+  s_prefs.putBool(kPrefsAltFeetKey, s_use_feet_for_altitude);
   s_prefs.end();
 }
 
@@ -92,6 +102,7 @@ void rangeInit() {
   s_range_index =
       (saved < kRangePresetCount) ? saved : kDefaultRangeIndex;
   s_use_miles = s_prefs.getBool(kPrefsMilesKey, false);
+  s_use_feet_for_altitude = s_prefs.getBool(kPrefsAltFeetKey, true);
   s_show_runways = s_prefs.getBool(kPrefsRunwaysKey, true);
   s_show_airport_labels = s_prefs.getBool(kPrefsAirportLabelsKey, true);
   const uint8_t saved_poll =
@@ -141,6 +152,8 @@ float fetchRadiusKm() {
 
 bool useMiles() { return s_use_miles; }
 
+bool useFeetForAltitude() { return s_use_feet_for_altitude; }
+
 bool showRunways() { return s_show_runways; }
 
 bool showAirportLabels() { return s_show_airport_labels; }
@@ -149,6 +162,13 @@ void saveMilesFromPortal(const char* checkbox_value) {
   s_use_miles = portalCheckboxChecked(checkbox_value);
   saveUseMiles();
   Serial.printf("Distance units: %s\n", s_use_miles ? "miles" : "km");
+}
+
+void saveAltitudeFeetFromPortal(const char* checkbox_value) {
+  s_use_feet_for_altitude = portalCheckboxChecked(checkbox_value);
+  saveUseFeetForAltitude();
+  Serial.printf("Altitude units: %s\n",
+                s_use_feet_for_altitude ? "feet" : "meters");
 }
 
 void saveRunwaysFromPortal(const char* checkbox_value) {
@@ -214,10 +234,12 @@ void formatPollIntervalOption(char* buf, size_t len, unsigned long interval_ms) 
 
 void unitsReset() {
   s_use_miles = false;
+  s_use_feet_for_altitude = true;
   s_show_runways = true;
   s_show_airport_labels = true;
   if (s_prefs.begin(kPrefsNamespace, false)) {
     s_prefs.remove(kPrefsMilesKey);
+    s_prefs.remove(kPrefsAltFeetKey);
     s_prefs.remove(kPrefsRunwaysKey);
     s_prefs.remove(kPrefsAirportLabelsKey);
     s_prefs.end();

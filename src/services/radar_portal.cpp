@@ -44,6 +44,7 @@ struct FormState {
   char lat[kCoordFieldLen + 1];
   char lon[kCoordFieldLen + 1];
   bool use_miles;
+  bool use_feet_for_altitude;
   bool show_runways;
   bool show_airport_labels;
 };
@@ -56,6 +57,7 @@ void loadFormDefaults(FormState* state) {
   snprintf(state->lat, sizeof(state->lat), "%.6f", services::location::lat());
   snprintf(state->lon, sizeof(state->lon), "%.6f", services::location::lon());
   state->use_miles = ui::radar::useMiles();
+  state->use_feet_for_altitude = ui::radar::useFeetForAltitude();
   state->show_runways = ui::radar::showRunways();
   state->show_airport_labels = ui::radar::showAirportLabels();
 }
@@ -141,6 +143,11 @@ String buildFormPage(const FormState& state, const char* error_msg) {
     page += F(" checked");
   }
   page += F("> Display distances in miles</label>"
+            "<label class=\"cb\"><input type=\"checkbox\" name=\"use_feet_for_altitude\" value=\"T\"");
+  if (state.use_feet_for_altitude) {
+    page += F(" checked");
+  }
+  page += F("> Display altitude in feet</label>"
             "<label class=\"cb\"><input type=\"checkbox\" name=\"show_runways\" value=\"T\"");
   if (state.show_runways) {
     page += F(" checked");
@@ -219,6 +226,7 @@ bool readPostForm(FormState* state, bool* range_ok, bool* poll_ok, bool* locatio
   *location_ok = services::location::validateStrings(state->lat, state->lon);
 
   state->use_miles = s_wm->server->hasArg("use_miles");
+  state->use_feet_for_altitude = s_wm->server->hasArg("use_feet_for_altitude");
   state->show_runways = s_wm->server->hasArg("show_runways");
   state->show_airport_labels = s_wm->server->hasArg("show_airport_labels");
   return true;
@@ -240,6 +248,7 @@ FormState mergeDisplayState(const FormState& submitted, bool range_ok, bool poll
 void saveFormState(const FormState& state) {
   services::location::saveFromStrings(state.lat, state.lon);
   ui::radar::saveMilesFromPortal(state.use_miles ? "T" : "");
+  ui::radar::saveAltitudeFeetFromPortal(state.use_feet_for_altitude ? "T" : "");
   ui::radar::saveRunwaysFromPortal(state.show_runways ? "T" : "");
   ui::radar::saveAirportLabelsFromPortal(state.show_airport_labels ? "T" : "");
   ui::radar::setRangeIndex(state.range_idx);

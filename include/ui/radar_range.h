@@ -55,10 +55,12 @@ uint8_t rangeIndex();
 float fetchRadiusKm();
 
 bool useMiles();
+bool useFeetForAltitude();
 bool showRunways();
 bool showAirportLabels();
 /** WiFi portal checkbox: "T" = miles, otherwise km. */
 void saveMilesFromPortal(const char* checkbox_value);
+void saveAltitudeFeetFromPortal(const char* checkbox_value);
 void saveRunwaysFromPortal(const char* checkbox_value);
 void saveAirportLabelsFromPortal(const char* checkbox_value);
 void formatRing3Label(char* buf, size_t len, float ring3_km, bool use_miles);

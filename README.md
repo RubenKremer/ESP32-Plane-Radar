@@ -42,6 +42,7 @@ The same portal runs on the setup AP and on the device’s LAN IP while connecte
 - **`http://plane-radar.local/radar-settings`** (LAN) or **`http://192.168.4.1/radar-settings`** (setup AP)
 - **Latitude / Longitude** — radar center and ADS-B query position
 - **Display distances in miles** — ring scale in **mi** instead of **km**
+- **Display altitude in feet** — aircraft tag altitude in **ft** instead of **m** (default ft)
 - **Show airport runways** — major-airport runway overlay on/off
 - **Show airport ICAO labels** — ICAO tags (e.g. `KJFK`) on/off; runways can stay visible without labels
 - **Range preset** — 5 / 10 / 15 / 25 km (labels show both km and mi, e.g. `10 km / 6 mi`); same as BOOT short tap
