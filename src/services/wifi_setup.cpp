@@ -77,56 +77,6 @@ static const char* kMenuLan[] = {
     "wifi", "info", "custom", "restart", "sep", "update",
 };
 
-constexpr int kCoordParamLen = 20;
-constexpr char kCoordInputAttrs[] =
-    " type=\"number\" step=\"0.000001\"";
-
-WiFiManagerParameter s_param_lat("radar_lat", "Latitude (deg)", "0",
-                                kCoordParamLen, kCoordInputAttrs);
-WiFiManagerParameter s_param_lon("radar_lon", "Longitude (deg)", "0",
-                                kCoordParamLen, kCoordInputAttrs);
-
-char s_miles_checkbox_attrs[32] = "type=\"checkbox\"";
-WiFiManagerParameter s_param_miles("use_miles", "Display distances in miles", "T", 2,
-                                   s_miles_checkbox_attrs, WFM_LABEL_AFTER);
-
-char s_runways_checkbox_attrs[32] = "type=\"checkbox\"";
-WiFiManagerParameter s_param_runways("show_runways", "Show airport runways", "T", 2,
-                                     s_runways_checkbox_attrs, WFM_LABEL_AFTER);
-
-void refreshPortalParamDefaults() {
-  char lat_buf[kCoordParamLen + 1];
-  char lon_buf[kCoordParamLen + 1];
-  snprintf(lat_buf, sizeof(lat_buf), "%.6f", services::location::lat());
-  snprintf(lon_buf, sizeof(lon_buf), "%.6f", services::location::lon());
-  s_param_lat.setValue(lat_buf, kCoordParamLen);
-  s_param_lon.setValue(lon_buf, kCoordParamLen);
-  snprintf(s_miles_checkbox_attrs, sizeof(s_miles_checkbox_attrs), "type=\"checkbox\"%s",
-           ui::radar::useMiles() ? " checked" : "");
-  s_param_miles.setValue("T", 2);
-  snprintf(s_runways_checkbox_attrs, sizeof(s_runways_checkbox_attrs),
-           "type=\"checkbox\"%s", ui::radar::showRunways() ? " checked" : "");
-  s_param_runways.setValue("T", 2);
-}
-
-void onPortalParamsSaved() {
-  if (!services::location::saveFromStrings(s_param_lat.getValue(),
-                                           s_param_lon.getValue())) {
-    Serial.println("Invalid lat/lon in portal — keeping previous location");
-  }
-  ui::radar::saveMilesFromPortal(s_param_miles.getValue());
-  ui::radar::saveRunwaysFromPortal(s_param_runways.getValue());
-}
-
-void attachPortalParams(WiFiManager& wm) {
-  refreshPortalParamDefaults();
-  wm.addParameter(&s_param_lat);
-  wm.addParameter(&s_param_lon);
-  wm.addParameter(&s_param_miles);
-  wm.addParameter(&s_param_runways);
-  wm.setSaveParamsCallback(onPortalParamsSaved);
-}
-
 void markForceConfigPortal() {
   s_force_config_portal = true;
   Preferences prefs;
@@ -244,7 +194,6 @@ void ensureWifiManager() {
   s_wm.setHostname(config::kPortalHostname);
   s_wm.setAPCallback(onConfigPortalApStarted);
   s_wm.setWebServerCallback([]() { services::radar_portal::registerRoutes(s_wm); });
-  attachPortalParams(s_wm);
   s_wm_configured = true;
 }
 
@@ -253,7 +202,6 @@ void startLanWebPortal() {
       s_wm.getConfigPortalActive()) {
     return;
   }
-  refreshPortalParamDefaults();
   WiFi.mode(WIFI_STA);
   s_wm.setConfigPortalBlocking(false);
   applyLanPortalMenu();
