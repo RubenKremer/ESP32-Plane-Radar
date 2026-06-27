@@ -45,6 +45,7 @@ struct FormState {
   char lon[kCoordFieldLen + 1];
   bool use_miles;
   bool show_runways;
+  bool show_airport_labels;
 };
 
 WiFiManager* s_wm = nullptr;
@@ -56,6 +57,7 @@ void loadFormDefaults(FormState* state) {
   snprintf(state->lon, sizeof(state->lon), "%.6f", services::location::lon());
   state->use_miles = ui::radar::useMiles();
   state->show_runways = ui::radar::showRunways();
+  state->show_airport_labels = ui::radar::showAirportLabels();
 }
 
 String pageHead(const char* title) {
@@ -144,6 +146,11 @@ String buildFormPage(const FormState& state, const char* error_msg) {
     page += F(" checked");
   }
   page += F("> Show airport runways</label>"
+            "<label class=\"cb\"><input type=\"checkbox\" name=\"show_airport_labels\" value=\"T\"");
+  if (state.show_airport_labels) {
+    page += F(" checked");
+  }
+  page += F("> Show airport ICAO labels</label>"
             "<label for=\"range_idx\">Range ring label</label>"
             "<select name=\"range_idx\" id=\"range_idx\">");
   page += buildRangeOptions(state.range_idx);
@@ -213,6 +220,7 @@ bool readPostForm(FormState* state, bool* range_ok, bool* poll_ok, bool* locatio
 
   state->use_miles = s_wm->server->hasArg("use_miles");
   state->show_runways = s_wm->server->hasArg("show_runways");
+  state->show_airport_labels = s_wm->server->hasArg("show_airport_labels");
   return true;
 }
 
@@ -233,6 +241,7 @@ void saveFormState(const FormState& state) {
   services::location::saveFromStrings(state.lat, state.lon);
   ui::radar::saveMilesFromPortal(state.use_miles ? "T" : "");
   ui::radar::saveRunwaysFromPortal(state.show_runways ? "T" : "");
+  ui::radar::saveAirportLabelsFromPortal(state.show_airport_labels ? "T" : "");
   ui::radar::setRangeIndex(state.range_idx);
   ui::radar::setPollIntervalIndex(state.poll_idx);
 }

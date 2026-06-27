@@ -43,6 +43,7 @@ The same portal runs on the setup AP and on the device’s LAN IP while connecte
 - **Latitude / Longitude** — radar center and ADS-B query position
 - **Display distances in miles** — ring scale in **mi** instead of **km**
 - **Show airport runways** — major-airport runway overlay on/off
+- **Show airport ICAO labels** — ICAO tags (e.g. `KJFK`) on/off; runways can stay visible without labels
 - **Range preset** — 5 / 10 / 15 / 25 km (labels show both km and mi, e.g. `10 km / 6 mi`); same as BOOT short tap
 - **Poll interval** — 3 / 5 / 10 / 15 / 30 seconds (default 3 s)
 - All choices persist across reboot (NVS)
@@ -76,7 +77,7 @@ Preset and miles/km choice persist across reboot (`planeradar` NVS namespace). C
 ### Runways
 
 - Major airports from OurAirports (`large_airport`); all open runway strips in range (helipads excluded)
-- Teal runway lines with one ICAO label per airport (e.g. `KJFK`); toggle in **Radar settings**
+- Teal runway lines with one ICAO label per airport (e.g. `KJFK`); runways and labels toggled separately in **Radar settings**
 - Update the embedded list: `python3 scripts/build_large_airports.py`
 
 ### Aircraft
