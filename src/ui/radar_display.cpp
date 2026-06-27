@@ -720,12 +720,11 @@ bool ensureFrameSprite() {
   return true;
 }
 
-// Double-buffered frame: composite the grid AND aircraft into the off-screen
-// sprite, then blit it to the panel in a single pushSprite. Because the panel
-// is updated in one pass, labels never show an erase/redraw gap — no flicker.
+// Composite grid + aircraft into the off-screen sprite, then blit once.
+// Single pushSprite avoids erase/redraw flicker on the panel.
 void renderFrame(const AircraftDrawItem* items, size_t draw_count,
                  const BeyondDotDrawItem* dots, size_t dot_count) {
-  drawStaticGrid(s_frame);  // opens its own DrawScope(s_frame)
+  drawStaticGrid(s_frame);
   {
     const DrawScope scope(s_frame);
     drawItems(items, draw_count, dots, dot_count);
@@ -749,7 +748,6 @@ void radarDisplayDraw() {
   if (ensureFrameSprite()) {
     renderFrame(items, draw_count, dots, dot_count);
   } else {
-    // Fallback when the sprite can't be allocated: draw straight to the panel.
     const DrawScope scope(tft);
     drawStaticGrid(tft);
     drawItems(items, draw_count, dots, dot_count);
