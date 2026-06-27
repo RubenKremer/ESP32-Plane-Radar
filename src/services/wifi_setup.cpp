@@ -109,7 +109,7 @@ static const char* kMenuAp[] = {
     "wifi", "info", "custom", "exit", "sep", "update",
 };
 static const char* kMenuLan[] = {
-    "wifi", "info", "custom", "restart", "sep", "update",
+    "wifi", "info", "custom", "sep", "update",
 };
 
 void markForceConfigPortal() {
@@ -218,7 +218,7 @@ void applyApPortalMenu() {
 
 void applyLanPortalMenu() {
   s_wm.setMenu(kMenuLan, sizeof(kMenuLan) / sizeof(kMenuLan[0]));
-  s_wm.setCustomMenuHTML(services::radar_portal::menuLinkHtml());
+  s_wm.setCustomMenuHTML(services::radar_portal::menuLanLinkHtml());
   s_wm.setShowBack(true);
 }
 

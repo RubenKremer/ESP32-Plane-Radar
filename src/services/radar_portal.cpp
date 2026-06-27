@@ -20,6 +20,12 @@ static const char kMenuLink[] =
     "<form action='/radar-settings' method='get'><button>Radar settings</button>"
     "</form><br/>\n";
 
+static const char kMenuLanLink[] =
+    "<form action='/radar-settings' method='get'><button>Radar settings</button>"
+    "</form><br/>\n"
+    "<form action='/restart' method='get'><button>Reset and disable Portal</button>"
+    "</form><br/>\n";
+
 static const char kPageStyle[] PROGMEM =
     "<style>"
     ".c,body,h1{text-align:center;font-family:verdana}"
@@ -336,6 +342,8 @@ void handlePost() {
 }  // namespace
 
 const char* menuLinkHtml() { return kMenuLink; }
+
+const char* menuLanLinkHtml() { return kMenuLanLink; }
 
 void registerRoutes(WiFiManager& wm) {
   s_wm = &wm;
