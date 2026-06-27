@@ -64,9 +64,18 @@ WiFiManager s_wm;
 bool s_wm_configured = false;
 
 void ensureWifiManager();
+void applyApPortalMenu();
+void applyLanPortalMenu();
 void startLanWebPortal();
 void stopLanWebPortal();
 bool wifiLinkUp();
+
+static const char* kMenuAp[] = {
+    "wifi", "info", "custom", "exit", "sep", "update",
+};
+static const char* kMenuLan[] = {
+    "wifi", "info", "custom", "restart", "sep", "update",
+};
 
 constexpr int kCoordParamLen = 20;
 constexpr char kCoordInputAttrs[] =
@@ -215,6 +224,16 @@ bool wifiLinkUp() {
          WiFi.localIP() != IPAddress(0, 0, 0, 0);
 }
 
+void applyApPortalMenu() {
+  s_wm.setMenu(kMenuAp, sizeof(kMenuAp) / sizeof(kMenuAp[0]));
+  s_wm.setCustomMenuHTML(services::radar_portal::menuLinkHtml());
+}
+
+void applyLanPortalMenu() {
+  s_wm.setMenu(kMenuLan, sizeof(kMenuLan) / sizeof(kMenuLan[0]));
+  s_wm.setCustomMenuHTML(services::radar_portal::menuLinkHtml());
+}
+
 void ensureWifiManager() {
   if (s_wm_configured) {
     return;
@@ -225,11 +244,6 @@ void ensureWifiManager() {
   s_wm.setHostname(config::kPortalHostname);
   s_wm.setAPCallback(onConfigPortalApStarted);
   s_wm.setWebServerCallback([]() { services::radar_portal::registerRoutes(s_wm); });
-  static const char* kMenu[] = {
-      "wifi", "info", "custom", "exit", "sep", "update",
-  };
-  s_wm.setMenu(kMenu, sizeof(kMenu) / sizeof(kMenu[0]));
-  s_wm.setCustomMenuHTML(services::radar_portal::menuLinkHtml());
   attachPortalParams(s_wm);
   s_wm_configured = true;
 }
@@ -242,6 +256,7 @@ void startLanWebPortal() {
   refreshPortalParamDefaults();
   WiFi.mode(WIFI_STA);
   s_wm.setConfigPortalBlocking(false);
+  applyLanPortalMenu();
 #ifdef WM_MDNS
   MDNS.end();
   if (MDNS.begin(config::kPortalHostname)) {
@@ -341,6 +356,7 @@ bool openConfigPortal() {
   delay(50);
   statusScreenPortal();
   s_wm.setConfigPortalBlocking(false);
+  applyApPortalMenu();
   s_wm.startConfigPortal(config::kPortalApName);
   while (s_wm.getConfigPortalActive()) {
     bootButtonPollLongPress();
