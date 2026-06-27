@@ -27,7 +27,7 @@ constexpr unsigned long kWifiReconnectIntervalMs = 15000;
 // --- BOOT button (ESP32-C3 Super Mini, active LOW) ---
 constexpr gpio_num_t kBootPin = GPIO_NUM_9;
 constexpr unsigned long kBootPortalHoldMs = 3000UL;
-constexpr unsigned long kBootFactoryResetHoldMs = 10000UL;
+constexpr unsigned long kBootFactoryResetHoldMs = 15000UL;
 /** Minimum time portal enabled/disabled status stays on screen. */
 constexpr unsigned long kPortalStatusMinDisplayMs = 6000UL;
 /** Ignore BOOT taps shorter than this (debounce). */

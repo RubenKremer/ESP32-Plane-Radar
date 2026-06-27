@@ -19,7 +19,7 @@ After Wi‑Fi is saved, the device reconnects automatically; the radar runs in t
 |--------|--------|
 | **Short tap** | Cycle range preset (5 → 10 → 15 → 25 km); saved to flash (same presets as **Radar settings** in the web portal) |
 | **Hold 3 s** | Enable or disable the **LAN config portal** (shows IP while holding; release to return to radar). Off by default each boot. |
-| **Hold 10 s** | Factory reset — clears Wi‑Fi, location, and units; reboots into setup portal (release to confirm) |
+| **Hold 15 s** | Factory reset — clears Wi‑Fi, location, and units; reboots into setup portal (release to confirm). Hold time was lengthened from 10 s to **15 s** to reduce accidental resets. |
 
 When the LAN portal is enabled, a **purple dot** appears under **N** on the radar. Open **`http://<device-ip>`** in a browser to change settings.
 

@@ -14,7 +14,7 @@ bool wifiBootButtonPressed();
 void bootButtonInit();
 /** Latched short tap (survives blocking HTTP/display work). */
 bool bootButtonConsumeTap();
-/** Call each loop iteration; handles 3 s portal toggle and 10 s factory reset. */
+/** Call each loop iteration; handles 3 s portal toggle and 15 s factory reset. */
 void bootButtonPoll();
 bool bootButtonHoldScreenActive();
 bool bootButtonConsumeRadarRedraw();
