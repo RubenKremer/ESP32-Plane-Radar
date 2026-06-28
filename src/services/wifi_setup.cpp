@@ -17,6 +17,7 @@
 #include "config.h"
 #include "services/radar_location.h"
 #include "services/radar_portal.h"
+#include "services/wifi_radio.h"
 #include "ui/radar_range.h"
 #include "ui/status_screens.h"
 
@@ -112,6 +113,29 @@ static const char* kMenuLan[] = {
     "wifi", "info", "custom", "sep", "update",
 };
 
+constexpr size_t kTxPowerParamHtmlLen = 640;
+char s_tx_power_param_html[kTxPowerParamHtmlLen];
+WiFiManagerParameter s_param_tx_power(s_tx_power_param_html);
+
+void refreshPortalTxPowerHtml() {
+  services::wifi_radio::buildTxPowerSelectHtml(s_tx_power_param_html,
+                                               sizeof(s_tx_power_param_html));
+}
+
+void onPortalParamsSaved() {
+  if (s_wm.server != nullptr) {
+    services::wifi_radio::saveTxPowerFromPortalForm(
+        s_wm.server->arg("tx_pwr_idx").c_str());
+  }
+  refreshPortalTxPowerHtml();
+}
+
+void attachPortalParams() {
+  refreshPortalTxPowerHtml();
+  s_wm.addParameter(&s_param_tx_power);
+  s_wm.setSaveParamsCallback(onPortalParamsSaved);
+}
+
 void markForceConfigPortal() {
   s_force_config_portal = true;
   Preferences prefs;
@@ -191,6 +215,7 @@ void resetWifiCredentials() {
 }
 
 void onConfigPortalApStarted(WiFiManager*) {
+  services::wifi_radio::applyTxPower();
   statusScreenPortal();
 #ifdef WM_MDNS
   if (MDNS.begin(config::kPortalHostname)) {
@@ -233,6 +258,7 @@ void ensureWifiManager() {
   s_wm.setTitle(config::kPortalTitle);
   s_wm.setAPCallback(onConfigPortalApStarted);
   s_wm.setWebServerCallback([]() { services::radar_portal::registerRoutes(s_wm); });
+  attachPortalParams();
   s_wm_configured = true;
 }
 
@@ -243,6 +269,7 @@ void startLanWebPortal() {
   }
   WiFi.mode(WIFI_STA);
   s_wm.setConfigPortalBlocking(false);
+  refreshPortalTxPowerHtml();
   applyLanPortalMenu();
 #ifdef WM_MDNS
   MDNS.end();
@@ -384,6 +411,7 @@ void prepareSta() {
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(WIFI_PS_NONE);
   WiFi.setAutoReconnect(true);
+  services::wifi_radio::applyTxPower();
 }
 
 void startStaConnect(const String& ssid, const String& pass) {
@@ -461,6 +489,7 @@ bool openConfigPortal() {
   statusScreenPortal();
   s_wm.setConfigPortalBlocking(false);
   applyApPortalMenu();
+  refreshPortalTxPowerHtml();
   s_wm.startConfigPortal(config::kPortalApName);
   while (s_wm.getConfigPortalActive()) {
     bootButtonPoll();
