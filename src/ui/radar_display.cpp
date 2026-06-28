@@ -12,6 +12,7 @@
 #include "hardware/display_font.h"
 #include "services/adsb_client.h"
 #include "services/radar_location.h"
+#include "services/wifi_setup.h"
 #include "ui/radar_range.h"
 #include "ui/radar_theme.h"
 #include "ui/runway_overlay.h"
@@ -565,6 +566,7 @@ uint32_t displayPrefsSignature() {
   h = hashMix(h, radar::showAircraftType() ? 1U : 0U);
   h = hashMix(h, radar::showAircraftAltitude() ? 1U : 0U);
   h = hashMix(h, radar::showAircraftSpeed() ? 1U : 0U);
+  h = hashMix(h, wifiLanPortalEnabled() ? 1U : 0U);
   return h;
 }
 
@@ -745,6 +747,20 @@ void drawScaleLabel(int cx, int cy, int outer_radius) {
 }
 
 template <typename Gfx>
+void drawPortalIndicator(Gfx& gfx) {
+  if (!wifiLanPortalEnabled()) {
+    return;
+  }
+  constexpr int kDotRadius = 3;
+  constexpr int kGapBelowN = 4;
+  const int cx = radar::kCenterX;
+  const int dot_y =
+      radar::kCardinalNorthOffsetY + radar::kCardinalLabelHeightPx + kGapBelowN;
+  const uint16_t purple = gfx.color565(160, 0, 220);
+  gfx.fillSmoothCircle(cx, dot_y, kDotRadius, purple);
+}
+
+template <typename Gfx>
 void drawStaticGrid(Gfx& gfx) {
   initLabelMetrics();
   const DrawScope scope(gfx);
@@ -760,6 +776,7 @@ void drawStaticGrid(Gfx& gfx) {
   runway::drawLargeAirportRunways(gfx);
   drawCenterDot(cx, cy);
   drawCardinalLabels();
+  drawPortalIndicator(gfx);
   drawScaleLabel(cx, cy, grid_r);
   gfx.setTextDatum(textdatum_t::top_left);
 }

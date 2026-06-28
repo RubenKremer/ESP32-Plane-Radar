@@ -45,10 +45,13 @@ constexpr auto& kPortalGfxEmphasis = fonts::FreeSansBold18pt7b;
 constexpr auto& kConnectingGfxDetail = fonts::FreeSans9pt7b;
 
 struct TextLine {
-  const char* text;
+  const char* text;  // nullptr = vertical gap (no text drawn)
   float vlw_size;
   const lgfx::GFXfont* gfx_font;
 };
+
+/** Blank line sized like portal body text — use between title block and footer hint. */
+constexpr TextLine kPortalBodyGap = {nullptr, 1.0f, &kPortalGfxBody};
 
 int lineHeightGfx(const lgfx::GFXfont* font) {
   displayFontSetBitmap(tft, font);
@@ -91,7 +94,9 @@ void drawTextBlock(uint16_t bg, uint16_t fg, const TextLine* lines, size_t count
     const int h =
         displayFontIsSmooth() ? lineHeightVlw(lines[i].vlw_size)
                               : lineHeightGfx(lines[i].gfx_font);
-    tft.drawString(lines[i].text, kCenterX, y + h / 2);
+    if (lines[i].text != nullptr) {
+      tft.drawString(lines[i].text, kCenterX, y + h / 2);
+    }
     y += h + kLineGap;
   }
 }
@@ -224,7 +229,7 @@ void statusScreenConnectFailed() {
       {"Could not connect", 1.15f, &kGfxTitle},
       {"Check Wi-Fi password", 1.0f, &kGfxBody},
       {"and signal strength.", 1.0f, &kGfxBody},
-      {"Hold BOOT 3 sec", 1.0f, &kGfxBody},
+      {"Hold BOOT 15 sec", 1.0f, &kGfxBody},
       {"to reset Wi-Fi", 1.0f, &kGfxBody},
   };
   drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
@@ -235,6 +240,38 @@ void statusScreenWifiReset() {
   const TextLine lines[] = {
       {"Wi-Fi reset", 1.15f, &kPortalGfxTitle},
       {"Restarting...", 1.05f, &kPortalGfxBody},
+  };
+  drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
+                sizeof(lines) / sizeof(lines[0]));
+}
+
+void statusScreenPortalEnabled(const char* ip) {
+  const char* addr = (ip != nullptr && ip[0] != '\0') ? ip : "?";
+  const TextLine lines[] = {
+      {"Portal enabled", 1.12f, &kPortalGfxTitle},
+      {addr, 1.15f, &kPortalGfxEmphasis},
+      kPortalBodyGap,
+      {"Hold for reset", 0.95f, &kPortalGfxBody},
+  };
+  drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
+                sizeof(lines) / sizeof(lines[0]));
+}
+
+void statusScreenPortalDisabling() {
+  const TextLine lines[] = {
+      {"Portal is", 1.12f, &kPortalGfxTitle},
+      {"now disabled", 1.12f, &kPortalGfxTitle},
+      kPortalBodyGap,
+      {"Hold for reset", 1.0f, &kPortalGfxBody},
+  };
+  drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
+                sizeof(lines) / sizeof(lines[0]));
+}
+
+void statusScreenFactoryResetPending() {
+  const TextLine lines[] = {
+      {"Factory reset", 1.12f, &kPortalGfxTitle},
+      {"Release to confirm", 1.0f, &kPortalGfxBody},
   };
   drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
                 sizeof(lines) / sizeof(lines[0]));

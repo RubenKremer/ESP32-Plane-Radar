@@ -22,6 +22,9 @@ constexpr unsigned long kRequestTimeoutMs = 10000;
 Aircraft s_aircraft[kMaxAircraft];
 size_t s_aircraft_count = 0;
 PollFn s_poll_fn = nullptr;
+AbortFn s_abort_fn = nullptr;
+
+constexpr int kFetchAborted = -1000;
 
 void pollNetwork() {
   if (s_poll_fn != nullptr) {
@@ -29,10 +32,17 @@ void pollNetwork() {
   }
 }
 
+bool fetchAborted() {
+  return s_abort_fn != nullptr && s_abort_fn();
+}
+
 int performGetWithPoll(HTTPClient& http) {
   http.setConnectTimeout(kConnectAttemptMs);
   const unsigned long deadline = millis() + kRequestTimeoutMs;
   while (millis() < deadline) {
+    if (fetchAborted()) {
+      return kFetchAborted;
+    }
     pollNetwork();
     const int code = http.GET();
     if (code > 0) {
@@ -61,6 +71,9 @@ bool readResponseBodyWithPoll(HTTPClient& http, String& payload) {
   uint8_t buffer[512];
   const unsigned long deadline = millis() + kRequestTimeoutMs;
   while (millis() < deadline) {
+    if (fetchAborted()) {
+      return false;
+    }
     pollNetwork();
     const int available = stream->available();
     if (available > 0) {
@@ -208,6 +221,8 @@ void fillTagFields(Aircraft* ac, const JsonObject& plane) {
 
 void setPollFn(PollFn fn) { s_poll_fn = fn; }
 
+void setAbortFn(AbortFn fn) { s_abort_fn = fn; }
+
 size_t aircraftCount() { return s_aircraft_count; }
 
 const Aircraft* aircraftList() { return s_aircraft; }
@@ -233,6 +248,10 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
 
   http.setTimeout(kRequestTimeoutMs);
   const int code = performGetWithPoll(http);
+  if (code == kFetchAborted) {
+    http.end();
+    return false;
+  }
   if (code != HTTP_CODE_OK) {
     Serial.printf("adsb: HTTP %d\n", code);
     http.end();
@@ -241,8 +260,11 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
 
   String payload;
   if (!readResponseBodyWithPoll(http, payload)) {
-    Serial.println("adsb: empty response");
     http.end();
+    if (fetchAborted()) {
+      return false;
+    }
+    Serial.println("adsb: empty response");
     return false;
   }
   http.end();

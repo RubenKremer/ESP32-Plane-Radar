@@ -18,9 +18,12 @@ After Wi‑Fi is saved, the device reconnects automatically; the radar runs in t
 | Action | Effect |
 |--------|--------|
 | **Short tap** | Cycle range preset (5 → 10 → 15 → 25 km); saved to flash (same presets as **Radar settings** in the web portal) |
-| **Hold 3 s** | Clear Wi‑Fi, location, and units; reboot into setup portal |
+| **Hold 3 s** | Enable or disable the **LAN config portal** (shows IP while holding; release to return to radar). Off by default each boot. |
+| **Hold 15 s** | Factory reset — clears Wi‑Fi, location, and units; reboots into setup portal (release to confirm). Hold time was lengthened from 10 s to **15 s** to reduce accidental resets. |
 
-During setup you can also hold BOOT at power-on to force a credential reset (same as the long press).
+**Cold boot (power-on):** holding BOOT while plugging in or resetting does **not** wipe Wi‑Fi or open the setup portal. BOOT gestures apply only after the firmware has started. To factory-reset, use the **15 s hold** above while the device is running.
+
+When the LAN portal is enabled, a **purple dot** appears under **N** on the radar. Open **`http://<device-ip>`** in a browser to change settings.
 
 ## Wi‑Fi setup portal
 
@@ -28,14 +31,25 @@ During setup you can also hold BOOT at power-on to force a credential reset (sam
 
 1. Connect to **`PlaneRadar-Setup`**
 2. Open **`http://plane-radar.local`** (preferred) or **`http://192.168.4.1`** — both are shown on the yellow setup screen; captive portal may open automatically
-3. Set home Wi‑Fi, then save
+3. Set home Wi‑Fi (and optional **radio TX power**), then save
 
 **Reconfigure anytime** (after the device is on your network):
 
-1. Open **`http://plane-radar.local`** or **`http://<device-ip>`** (e.g. from your router or serial log at boot)
-2. Change Wi‑Fi, or open **Radar settings** for location, units, range, and poll interval; save
+1. **Hold BOOT 3 s** to enable the LAN portal (purple dot under **N**), then open **`http://<device-ip>`** in a browser
+2. Change Wi‑Fi and **radio TX power** on **Configure WiFi**, or open **Radar settings** for location, units, range, and poll interval; save
+3. **Hold BOOT 3 s** again to disable the portal when finished
 
 The same portal runs on the setup AP and on the device’s LAN IP while connected to Wi‑Fi. mDNS hostname is `plane-radar` → **plane-radar.local** (`kPortalHostname` in `config.h`). Some clients resolve `.local` slowly; use the IP if needed.
+
+**Configure WiFi** (root menu **Configure WiFi** or **`/wifi`**):
+
+- Home network SSID and password
+- **Radio TX power** — preset dropdown (stored in NVS; applies to STA and setup AP):
+  - **High** — 19.5 dBm (default)
+  - **Medium** — 15 dBm
+  - **Low** — 11 dBm
+  - **Minimum** — 8.5 dBm
+- Saved with the Wi‑Fi form; persists across reboot (NVS `wifi` namespace; not cleared by factory reset)
 
 **Radar settings** (separate page — root menu link or direct URL):
 
@@ -49,9 +63,9 @@ The same portal runs on the setup AP and on the device’s LAN IP while connecte
 - All choices persist across reboot (NVS)
 - While the radar is on screen and Wi‑Fi is connected, saving range updates the ring label immediately; on the setup AP only NVS/serial update until the device joins your network
 
-**Configure WiFi** is Wi‑Fi credentials only — location and display options are on **Radar settings**.
+Location, units, runway/aircraft display options, range, and poll interval are on **Radar settings** — not on **Configure WiFi** (except Wi‑Fi credentials and radio TX power).
 
-After a reset, the device reboots and shows the setup screen immediately (no “Connecting” loop on stale credentials).
+After a **factory reset** (15 s BOOT hold), the device reboots and opens the setup portal on the next boot (no “Connecting” loop on stale credentials). That one-time behavior is stored in NVS — a normal power cycle afterward reconnects using saved Wi‑Fi as usual.
 
 ## Radar display
 
@@ -103,7 +117,7 @@ Edit **`include/config.h`** for hardware and behavior:
 |------|----------------|
 | Portal | `kPortalApName`, `kPortalIp`, `kPortalHostname` / `kPortalHostUrl` (mDNS; needs `-DWM_MDNS` in `platformio.ini`) |
 | Wi‑Fi timing | connect attempts, reconnect grace, portal timeout (`0` = no timeout) |
-| BOOT | `kBootPin`, `kBootResetHoldMs`, `kBootTapMinMs` |
+| BOOT | `kBootPin`, `kBootPortalHoldMs`, `kBootFactoryResetHoldMs`, `kBootTapMinMs` |
 | Display SPI | pins, `kDisplayInvert`, `kDisplayRgbOrder`, `kDisplaySpiWriteHz` |
 | Default location | `kDefaultRadarLat`, `kDefaultRadarLon` (until portal overrides) |
 | ADS-B | `kAdsbFetchIntervalMs` (compile-time default only), `kAdsbShowGroundAircraft` |
@@ -129,6 +143,7 @@ include/
     status_screens.h
   services/
     wifi_setup.h
+    wifi_radio.h
     radar_location.h
     radar_portal.h
     adsb_client.h

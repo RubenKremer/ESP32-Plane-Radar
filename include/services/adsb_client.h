@@ -24,6 +24,10 @@ const Aircraft* aircraftList();
 using PollFn = void (*)();
 void setPollFn(PollFn fn);
 
+/** Return true to cancel an in-flight fetch (e.g. BOOT held). Optional. */
+using AbortFn = bool (*)();
+void setAbortFn(AbortFn fn);
+
 /** Fetch aircraft within fetch_radius_km of center_lat/lon from adsb.fi. */
 bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km);
 
