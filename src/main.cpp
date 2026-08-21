@@ -6,6 +6,7 @@
 #include <WiFi.h>
 
 #include "config.h"
+#include "debug/perf_log.h"
 #include "hardware/display.h"
 #include "services/adsb_client.h"
 #include "services/radar_location.h"
@@ -61,25 +62,39 @@ void handleBootButton() {
 }
 
 void fetchAndDrawAircraft() {
+  debug::perf::reset();
+  const uint32_t t0 = debug::perf::nowMs();
   const float fetch_km = ui::radar::fetchRadiusKm();
   if (!services::adsb::fetchUpdate(services::location::lat(),
                                    services::location::lon(), fetch_km)) {
+    debug::perf::current().total_ms = debug::perf::nowMs() - t0;
+    debug::perf::logCycle("poll-fail");
     handleBootButton();
     return;
   }
   if (!bootButtonHoldScreenActive()) {
     ui::radarDisplayRefreshAircraft();
   }
+  debug::perf::current().total_ms = debug::perf::nowMs() - t0;
+  debug::perf::logCycle("poll");
   handleBootButton();
 }
 
 }  // namespace
 
 void setup() {
+  Serial.setTxBufferSize(1024);
   Serial.begin(115200);
+  // USB Serial/JTAG otherwise waits up to 100 ms per write when a host is
+  // enumerated but nothing is reading /dev/ttyACM0 (full 256-byte TX ring).
+  Serial.setTxTimeoutMs(0);
   delay(500);
   Serial.println();
   Serial.println("Plane Radar");
+  if (config::kEnablePerfLog) {
+    Serial.println(
+        "perf log on — each poll prints http_get/json/grid/items/blit (ms)");
+  }
 
   bootButtonInit();
   displayInit();

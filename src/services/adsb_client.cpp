@@ -5,9 +5,11 @@
 
 #include <ArduinoJson.h>
 
+#include <cstdio>
 #include <cstring>
 
 #include "config.h"
+#include "debug/perf_log.h"
 #include "ui/radar_range.h"
 
 namespace services::adsb {
@@ -57,46 +59,105 @@ int performGetWithPoll(HTTPClient& http) {
   return HTTPC_ERROR_READ_TIMEOUT;
 }
 
-bool readResponseBodyWithPoll(HTTPClient& http, String& payload) {
-  WiFiClient* stream = http.getStreamPtr();
-  if (stream == nullptr) {
-    return false;
+/** Stream wrapper so ArduinoJson can parse the body without a full RAM copy. */
+class PollingStream : public Stream {
+ public:
+  PollingStream(WiFiClient& client, unsigned long deadline)
+      : client_(client), deadline_(deadline) {
+    setTimeout(kRequestTimeoutMs);
   }
 
-  const int content_length = http.getSize();
-  if (content_length > 0) {
-    payload.reserve(static_cast<unsigned>(content_length + 1));
+  int available() override {
+    pump();
+    return aborted_ ? 0 : client_.available();
   }
 
-  uint8_t buffer[512];
-  const unsigned long deadline = millis() + kRequestTimeoutMs;
-  while (millis() < deadline) {
-    if (fetchAborted()) {
-      return false;
+  int read() override {
+    if (!waitAvailable()) {
+      return -1;
+    }
+    return client_.read();
+  }
+
+  int peek() override {
+    if (!waitAvailable()) {
+      return -1;
+    }
+    return client_.peek();
+  }
+
+  size_t readBytes(char* buffer, size_t length) override {
+    size_t n = 0;
+    while (n < length) {
+      if (!waitAvailable()) {
+        break;
+      }
+      const int avail = client_.available();
+      size_t chunk = static_cast<size_t>(avail);
+      if (chunk > length - n) {
+        chunk = length - n;
+      }
+      const int got =
+          client_.read(reinterpret_cast<uint8_t*>(buffer + n), chunk);
+      if (got <= 0) {
+        break;
+      }
+      n += static_cast<size_t>(got);
+    }
+    return n;
+  }
+
+  size_t write(uint8_t) override { return 0; }
+  void flush() override {}
+  bool aborted() const { return aborted_; }
+
+ private:
+  void pump() {
+    if (aborted_) {
+      return;
+    }
+    if (fetchAborted() || millis() > deadline_) {
+      aborted_ = true;
+      return;
     }
     pollNetwork();
-    const int available = stream->available();
-    if (available > 0) {
-      const int to_read =
-          available > static_cast<int>(sizeof(buffer)) ? static_cast<int>(sizeof(buffer))
-                                                       : available;
-      const int read_bytes = stream->readBytes(buffer, to_read);
-      if (read_bytes > 0) {
-        payload.concat(reinterpret_cast<const char*>(buffer),
-                       static_cast<unsigned>(read_bytes));
-      }
-    }
-    if (content_length > 0 &&
-        static_cast<int>(payload.length()) >= content_length) {
-      break;
-    }
-    if (!http.connected() && stream->available() <= 0) {
-      break;
-    }
-    delay(1);
   }
 
-  return payload.length() > 0;
+  bool waitAvailable() {
+    while (!aborted_ && client_.available() <= 0) {
+      pump();
+      if (aborted_) {
+        return false;
+      }
+      if (!client_.connected() && client_.available() <= 0) {
+        return false;
+      }
+      delay(1);
+    }
+    pump();
+    return !aborted_ && client_.available() > 0;
+  }
+
+  WiFiClient& client_;
+  unsigned long deadline_;
+  bool aborted_ = false;
+};
+
+void buildAircraftFilter(JsonDocument& filter) {
+  filter["ac"][0]["lat"] = true;
+  filter["ac"][0]["lon"] = true;
+  filter["ac"][0]["true_heading"] = true;
+  filter["ac"][0]["mag_heading"] = true;
+  filter["ac"][0]["track"] = true;
+  filter["ac"][0]["dir"] = true;
+  filter["ac"][0]["gs"] = true;
+  filter["ac"][0]["tas"] = true;
+  filter["ac"][0]["ias"] = true;
+  filter["ac"][0]["flight"] = true;
+  filter["ac"][0]["hex"] = true;
+  filter["ac"][0]["t"] = true;
+  filter["ac"][0]["alt_baro"] = true;
+  filter["ac"][0]["alt_geom"] = true;
 }
 
 float kmToNauticalMiles(float km) { return km / kKmPerNm; }
@@ -229,25 +290,29 @@ const Aircraft* aircraftList() { return s_aircraft; }
 
 bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   const float dist_nm = kmToNauticalMiles(fetch_radius_km);
+  auto& perf = debug::perf::current();
 
-  String url = kApiBase;
-  url += String(center_lat, 6);
-  url += "/lon/";
-  url += String(center_lon, 6);
-  url += "/dist/";
-  url += String(dist_nm, 1);
+  char url[128];
+  snprintf(url, sizeof(url), "%s%.6f/lon/%.6f/dist/%.1f", kApiBase, center_lat,
+           center_lon, dist_nm);
 
   WiFiClientSecure client;
   client.setInsecure();
 
   HTTPClient http;
+  uint32_t t0 = debug::perf::nowMs();
   if (!http.begin(client, url)) {
+    perf.http_begin_ms = debug::perf::nowMs() - t0;
     Serial.println("adsb: http.begin failed");
     return false;
   }
+  perf.http_begin_ms = debug::perf::nowMs() - t0;
 
   http.setTimeout(kRequestTimeoutMs);
+  t0 = debug::perf::nowMs();
   const int code = performGetWithPoll(http);
+  perf.http_get_ms = debug::perf::nowMs() - t0;
+  perf.http_code = code;
   if (code == kFetchAborted) {
     http.end();
     return false;
@@ -258,19 +323,29 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
     return false;
   }
 
-  String payload;
-  if (!readResponseBodyWithPoll(http, payload)) {
+  perf.content_len = http.getSize();
+
+  WiFiClient* raw = http.getStreamPtr();
+  if (raw == nullptr) {
     http.end();
-    if (fetchAborted()) {
-      return false;
-    }
     Serial.println("adsb: empty response");
     return false;
   }
+
+  JsonDocument filter;
+  buildAircraftFilter(filter);
+
+  PollingStream stream(*raw, millis() + kRequestTimeoutMs);
+  JsonDocument doc;
+  t0 = debug::perf::nowMs();
+  const DeserializationError err =
+      deserializeJson(doc, stream, DeserializationOption::Filter(filter));
+  perf.json_ms = debug::perf::nowMs() - t0;
   http.end();
 
-  JsonDocument doc;
-  const DeserializationError err = deserializeJson(doc, payload);
+  if (stream.aborted()) {
+    return false;
+  }
   if (err) {
     Serial.printf("adsb: JSON parse error: %s\n", err.c_str());
     return false;
@@ -279,6 +354,8 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   JsonArray ac = doc["ac"].as<JsonArray>();
   if (ac.isNull()) {
     s_aircraft_count = 0;
+    perf.aircraft = 0;
+    perf.fetch_ok = true;
     return true;
   }
 
@@ -287,15 +364,18 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
     if (n >= kMaxAircraft) {
       break;
     }
-    if (!plane["lat"].is<float>() || !plane["lon"].is<float>()) {
+    float lat = 0.0f;
+    float lon = 0.0f;
+    if (!readJsonFloat(plane, "lat", &lat) ||
+        !readJsonFloat(plane, "lon", &lon)) {
       continue;
     }
     if (isOnGround(plane) && !config::kAdsbShowGroundAircraft) {
       continue;
     }
 
-    s_aircraft[n].lat = plane["lat"].as<float>();
-    s_aircraft[n].lon = plane["lon"].as<float>();
+    s_aircraft[n].lat = lat;
+    s_aircraft[n].lon = lon;
     s_aircraft[n].nose_deg = pickNoseHeading(plane);
     s_aircraft[n].track_deg = pickTrackHeading(plane);
     s_aircraft[n].gs_knots = pickGroundSpeed(plane);
@@ -304,7 +384,11 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   }
 
   s_aircraft_count = n;
-  Serial.printf("adsb: %u aircraft\n", static_cast<unsigned>(n));
+  perf.aircraft = static_cast<uint16_t>(n);
+  perf.fetch_ok = true;
+  if (!config::kEnablePerfLog) {
+    Serial.printf("adsb: %u aircraft\n", static_cast<unsigned>(n));
+  }
   return true;
 }
 
