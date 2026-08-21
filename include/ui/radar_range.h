@@ -89,4 +89,9 @@ void formatAircraftSpeedLabel(char* buf, size_t len, float gs_knots);
 /** Reset distance units to km (e.g. with WiFi credential wipe). */
 void unitsReset();
 
+/** True heading shown at the top of the display (0 = north up). */
+uint16_t headingAtTopDeg();
+/** Persist heading 0–359; marks dirty on change. Returns false if out of range. */
+bool setHeadingAtTopDeg(uint16_t heading);
+
 }  // namespace ui::radar

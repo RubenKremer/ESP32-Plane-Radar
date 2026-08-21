@@ -25,6 +25,35 @@ inline int distSqFromCenter(int x, int y) {
   return dx * dx + dy * dy;
 }
 
+/** Rotate geographic east/north km so heading-at-top points screen-up. */
+inline void rotateMapOffset(float east_km, float north_km, float* screen_east,
+                             float* screen_north) {
+  const uint16_t heading = headingAtTopDeg();
+  if (heading == 0) {
+    *screen_east = east_km;
+    *screen_north = north_km;
+    return;
+  }
+  constexpr float kDegToRad = 0.01745329252f;
+  const float angle = static_cast<float>(heading) * kDegToRad;
+  const float sin_a = sinf(angle);
+  const float cos_a = cosf(angle);
+  *screen_east = east_km * cos_a - north_km * sin_a;
+  *screen_north = north_km * cos_a + east_km * sin_a;
+}
+
+/** Geographic heading to screen-relative degrees (0 = up). */
+inline float headingToScreen(float heading_deg) {
+  float rotated = heading_deg - static_cast<float>(headingAtTopDeg());
+  while (rotated < 0.0f) {
+    rotated += 360.0f;
+  }
+  while (rotated >= 360.0f) {
+    rotated -= 360.0f;
+  }
+  return rotated;
+}
+
 inline void latLonToScreen(float lat, float lon, int* out_x, int* out_y) {
   const float px_per_km =
       static_cast<float>(kGridOuterRadius) / rangeCurrent().outer_km;
@@ -34,8 +63,12 @@ inline void latLonToScreen(float lat, float lon, int* out_x, int* out_y) {
   float dist_km = 0.0f;
   offsetKmFromCenter(lat, lon, &dx_km, &dy_km, &dist_km);
 
-  *out_x = kCenterX + static_cast<int>(lroundf(dx_km * px_per_km));
-  *out_y = kCenterY - static_cast<int>(lroundf(dy_km * px_per_km));
+  float screen_east = 0.0f;
+  float screen_north = 0.0f;
+  rotateMapOffset(dx_km, dy_km, &screen_east, &screen_north);
+
+  *out_x = kCenterX + static_cast<int>(lroundf(screen_east * px_per_km));
+  *out_y = kCenterY - static_cast<int>(lroundf(screen_north * px_per_km));
 }
 
 /** Move (*x1,*y1) toward (x0,y0) until it lies on the outer grid ring. */

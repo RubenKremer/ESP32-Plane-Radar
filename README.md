@@ -60,10 +60,11 @@ The same portal runs on the setup AP and on the device’s LAN IP while connecte
 - **Aircraft** — show flight/callsign, aircraft type, altitude (each optional); altitude in **ft** vs **m** (default ft); optional **ground speed** tag (default off) in **kt** vs **km/h** (default kt)
 - **Range preset** — 5 / 10 / 15 / 25 km (labels show both km and mi, e.g. `10 km / 6 mi`); same as BOOT short tap
 - **Poll interval** — 3 / 5 / 10 / 15 / 30 seconds (default 3 s)
-- All choices persist across reboot (NVS)
-- While the radar is on screen and Wi‑Fi is connected, saving range updates the ring label immediately; on the setup AP only NVS/serial update until the device joins your network
+- **Compass heading at top** — 0–359° (default **0** = north at top); align traffic with how the device is mounted (use a phone compass: hold it level, align its top edge with the top of the display, enter the reading)
+- All choices persist across reboot (NVS `planeradar` namespace)
+- While the radar is on screen and Wi‑Fi is connected, saving range or heading updates the display immediately; on the setup AP only NVS/serial update until the device joins your network
 
-Location, units, runway/aircraft display options, range, and poll interval are on **Radar settings** — not on **Configure WiFi** (except Wi‑Fi credentials and radio TX power).
+Location, units, runway/aircraft display options, range, poll interval, and compass heading are on **Radar settings** — not on **Configure WiFi** (except Wi‑Fi credentials and radio TX power).
 
 After a **factory reset** (15 s BOOT hold), the device reboots and opens the setup portal on the next boot (no “Connecting” loop on stale credentials). That one-time behavior is stored in NVS — a normal power cycle afterward reconnects using saved Wi‑Fi as usual.
 
@@ -72,7 +73,7 @@ After a **factory reset** (15 s BOOT hold), the device reboots and opens the set
 ### Grid
 
 - Dark blue background, subdued green rings and crosshairs
-- White **N / S / E / W** at the bezel; range label on the **east** spoke (ring 3 = ¾ of outer radius)
+- White **N / S / E / W** on the bezel (move when compass heading ≠ 0); range label stays on the **right** spoke (ring 3 = ¾ of outer radius)
 - White center dot
 
 Layout and colors: `include/ui/radar_theme.h`.
