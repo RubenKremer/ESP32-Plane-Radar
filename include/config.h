@@ -59,6 +59,12 @@ constexpr float kAdsbFetchRadiusScale = 1.0f;
 /** false = hide aircraft with alt_baro "ground"; true = show them too. */
 constexpr bool kAdsbShowGroundAircraft = false;
 
+/**
+ * USB serial timing line each ADS-B cycle (`perf ...`).
+ * Off for normal use; set true when hunting stalls.
+ */
+constexpr bool kEnablePerfLog = false;
+
 // --- UI colors (RGB565) — status screens ---
 constexpr uint16_t kColorBlack = 0x0000;
 constexpr uint16_t kColorYellow = 0xFFE0;
