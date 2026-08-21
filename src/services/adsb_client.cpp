@@ -1,6 +1,7 @@
 #include "services/adsb_client.h"
 
 #include <HTTPClient.h>
+#include <WiFi.h>
 #include <WiFiClientSecure.h>
 
 #include <ArduinoJson.h>
@@ -38,27 +39,6 @@ bool fetchAborted() {
   return s_abort_fn != nullptr && s_abort_fn();
 }
 
-int performGetWithPoll(HTTPClient& http) {
-  http.setConnectTimeout(kConnectAttemptMs);
-  const unsigned long deadline = millis() + kRequestTimeoutMs;
-  while (millis() < deadline) {
-    if (fetchAborted()) {
-      return kFetchAborted;
-    }
-    pollNetwork();
-    const int code = http.GET();
-    if (code > 0) {
-      return code;
-    }
-    if (code != HTTPC_ERROR_CONNECTION_REFUSED &&
-        code != HTTPC_ERROR_NOT_CONNECTED) {
-      return code;
-    }
-    delay(5);
-  }
-  return HTTPC_ERROR_READ_TIMEOUT;
-}
-
 /** Stream wrapper so ArduinoJson can parse the body without a full RAM copy. */
 class PollingStream : public Stream {
  public:
@@ -66,6 +46,8 @@ class PollingStream : public Stream {
       : client_(client), deadline_(deadline) {
     setTimeout(kRequestTimeoutMs);
   }
+
+  size_t bytesRead() const { return bytes_read_; }
 
   int available() override {
     pump();
@@ -76,7 +58,11 @@ class PollingStream : public Stream {
     if (!waitAvailable()) {
       return -1;
     }
-    return client_.read();
+    const int c = client_.read();
+    if (c >= 0) {
+      ++bytes_read_;
+    }
+    return c;
   }
 
   int peek() override {
@@ -103,6 +89,7 @@ class PollingStream : public Stream {
         break;
       }
       n += static_cast<size_t>(got);
+      bytes_read_ += static_cast<size_t>(got);
     }
     return n;
   }
@@ -140,8 +127,113 @@ class PollingStream : public Stream {
 
   WiFiClient& client_;
   unsigned long deadline_;
+  size_t bytes_read_ = 0;
   bool aborted_ = false;
 };
+
+struct AdsbSession {
+  WiFiClientSecure tls;
+  HTTPClient http;
+  bool configured = false;
+
+  void configure() {
+    if (configured) {
+      return;
+    }
+    tls.setInsecure();
+    http.setReuse(true);
+    http.setTimeout(kRequestTimeoutMs);
+    http.setConnectTimeout(kConnectAttemptMs);
+    configured = true;
+  }
+
+  void drop() { tls.stop(); }
+
+  bool beginUrl(const char* url) {
+    configure();
+    return http.begin(tls, url);
+  }
+
+  bool drainBody(int content_len, size_t already, unsigned long deadline) {
+    if (content_len < 0) {
+      drop();
+      return false;
+    }
+    size_t need = static_cast<size_t>(content_len);
+    if (already >= need) {
+      return true;
+    }
+    need -= already;
+    uint8_t buf[256];
+    while (need > 0) {
+      if (fetchAborted() || millis() > deadline) {
+        drop();
+        return false;
+      }
+      pollNetwork();
+      const int avail = tls.available();
+      if (avail <= 0) {
+        if (!tls.connected()) {
+          drop();
+          return false;
+        }
+        delay(1);
+        continue;
+      }
+      size_t chunk = static_cast<size_t>(avail);
+      if (chunk > need) {
+        chunk = need;
+      }
+      if (chunk > sizeof(buf)) {
+        chunk = sizeof(buf);
+      }
+      const int got = tls.read(buf, chunk);
+      if (got <= 0) {
+        drop();
+        return false;
+      }
+      need -= static_cast<size_t>(got);
+    }
+    return true;
+  }
+};
+
+AdsbSession s_session;
+
+int performGet(const char* url) {
+  auto attempt = [&]() -> int {
+    if (fetchAborted()) {
+      return kFetchAborted;
+    }
+    pollNetwork();
+    if (!s_session.beginUrl(url)) {
+      return HTTPC_ERROR_CONNECTION_REFUSED;
+    }
+    return s_session.http.GET();
+  };
+
+  int code = attempt();
+  if (code == kFetchAborted) {
+    s_session.drop();
+    return code;
+  }
+  if (code > 0) {
+    return code;
+  }
+  if (code != HTTPC_ERROR_CONNECTION_REFUSED &&
+      code != HTTPC_ERROR_NOT_CONNECTED &&
+      code != HTTPC_ERROR_CONNECTION_LOST) {
+    s_session.drop();
+    return code;
+  }
+
+  s_session.drop();
+  code = attempt();
+  if (code == kFetchAborted || code <= 0) {
+    s_session.drop();
+  }
+  return code;
+}
 
 void buildAircraftFilter(JsonDocument& filter) {
   filter["ac"][0]["lat"] = true;
@@ -292,64 +384,67 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   const float dist_nm = kmToNauticalMiles(fetch_radius_km);
   auto& perf = debug::perf::current();
 
+  if (WiFi.status() != WL_CONNECTED) {
+    s_session.drop();
+    return false;
+  }
+
   char url[128];
   snprintf(url, sizeof(url), "%s%.6f/lon/%.6f/dist/%.1f", kApiBase, center_lat,
            center_lon, dist_nm);
 
-  WiFiClientSecure client;
-  client.setInsecure();
-
-  HTTPClient http;
   uint32_t t0 = debug::perf::nowMs();
-  if (!http.begin(client, url)) {
-    perf.http_begin_ms = debug::perf::nowMs() - t0;
-    Serial.println("adsb: http.begin failed");
-    return false;
-  }
-  perf.http_begin_ms = debug::perf::nowMs() - t0;
-
-  http.setTimeout(kRequestTimeoutMs);
-  t0 = debug::perf::nowMs();
-  const int code = performGetWithPoll(http);
+  const int code = performGet(url);
+  perf.http_begin_ms = 0;
   perf.http_get_ms = debug::perf::nowMs() - t0;
   perf.http_code = code;
   if (code == kFetchAborted) {
-    http.end();
+    s_session.drop();
     return false;
   }
   if (code != HTTP_CODE_OK) {
     Serial.printf("adsb: HTTP %d\n", code);
-    http.end();
+    s_session.drop();
+    s_session.http.end();
     return false;
   }
 
-  perf.content_len = http.getSize();
+  const int content_len = s_session.http.getSize();
+  perf.content_len = content_len;
 
-  WiFiClient* raw = http.getStreamPtr();
+  WiFiClient* raw = s_session.http.getStreamPtr();
   if (raw == nullptr) {
-    http.end();
     Serial.println("adsb: empty response");
+    s_session.drop();
+    s_session.http.end();
     return false;
   }
 
   JsonDocument filter;
   buildAircraftFilter(filter);
 
-  PollingStream stream(*raw, millis() + kRequestTimeoutMs);
+  const unsigned long body_deadline = millis() + kRequestTimeoutMs;
+  PollingStream stream(*raw, body_deadline);
   JsonDocument doc;
   t0 = debug::perf::nowMs();
   const DeserializationError err =
       deserializeJson(doc, stream, DeserializationOption::Filter(filter));
   perf.json_ms = debug::perf::nowMs() - t0;
-  http.end();
 
-  if (stream.aborted()) {
-    return false;
-  }
-  if (err) {
+  if (stream.aborted() || err) {
+    s_session.drop();
+    s_session.http.end();
+    if (stream.aborted()) {
+      return false;
+    }
     Serial.printf("adsb: JSON parse error: %s\n", err.c_str());
     return false;
   }
+
+  if (!s_session.drainBody(content_len, stream.bytesRead(), body_deadline)) {
+    Serial.println("adsb: body drain failed — dropping TLS");
+  }
+  s_session.http.end();
 
   JsonArray ac = doc["ac"].as<JsonArray>();
   if (ac.isNull()) {
