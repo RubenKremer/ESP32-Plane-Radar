@@ -11,13 +11,13 @@ Firmware for an **ESP32-C3 Super Mini** and a **1.28″ round GC9A01** display (
 1. **Wi‑Fi setup** (if needed) — captive portal on AP **`PlaneRadar-Setup`**
 2. **Radar** — live aircraft from [adsb.fi](https://opendata.adsb.fi/) on a sonar-style grid
 
-After Wi‑Fi is saved, the device reconnects automatically; the radar runs in the main loop with periodic ADS-B updates (~5 s).
+After Wi‑Fi is saved, the device reconnects automatically; the radar runs in the main loop with periodic ADS-B updates (default **3 s**).
 
 ## Controls (BOOT, GPIO 9, active LOW)
 
 | Action | Effect |
 |--------|--------|
-| **Short tap** | Cycle range preset (5 → 10 → 15 → 25 km); saved to flash (same presets as **Radar settings** in the web portal) |
+| **Short tap** | Cycle range preset (5 → 10 → 15 → 25 km); saved to flash and applied immediately (same presets as **Radar settings** in the web portal) |
 | **Hold 3 s** | Enable or disable the **LAN config portal** (shows IP while holding; release to return to radar). Off by default each boot. |
 | **Hold 15 s** | Factory reset — clears Wi‑Fi, location, and units; reboots into setup portal (release to confirm). Hold time was lengthened from 10 s to **15 s** to reduce accidental resets. |
 
@@ -106,7 +106,8 @@ As range decreases (or aircraft approach), targets move inward; beyond-ring dots
 
 - Source: `https://opendata.adsb.fi/api/v3/`
 - Fetch radius: `ui::radar::fetchRadiusKm()` — scales with the active preset to roughly the screen edge (so rim dots have data)
-- Poll interval: `ui::radar::pollIntervalMs()` — default **3 s**, configurable in **Radar settings** (3 / 5 / 10 / 15 / 30 s). Presets are **minimum spacing between fetch attempts**; blocking HTTP means slow responses can still approach adsb.fi’s **1 req/s** public limit.
+- HTTPS connection is **reused** across polls (keep-alive) so a typical update is a few hundred milliseconds after the first handshake; BOOT range taps stay responsive during a fetch
+- Poll interval: `ui::radar::pollIntervalMs()` — default **3 s**, configurable in **Radar settings** (3 / 5 / 10 / 15 / 30 s). Presets are **minimum spacing between fetch attempts**. Stay at or above 3 s to respect adsb.fi’s **1 req/s** public limit.
 - Ground aircraft hidden by default (`kAdsbShowGroundAircraft`)
 
 ## Configuration
@@ -121,6 +122,7 @@ Edit **`include/config.h`** for hardware and behavior:
 | Display SPI | pins, `kDisplayInvert`, `kDisplayRgbOrder`, `kDisplaySpiWriteHz` |
 | Default location | `kDefaultRadarLat`, `kDefaultRadarLon` (until portal overrides) |
 | ADS-B | `kAdsbFetchIntervalMs` (compile-time default only), `kAdsbShowGroundAircraft` |
+| Diagnostics | `kEnablePerfLog` — USB `perf poll:` timing line (default **false**; set `true` to hunt stalls) |
 
 Range and poll presets: `include/ui/radar_range.h` (`kRangePresets`, `kPollIntervalPresetsMs`).
 
@@ -135,8 +137,11 @@ include/
     display_font.h
   data/
     large_airports.h
+  debug/
+    perf_log.h             — optional USB timing (`kEnablePerfLog`)
   ui/
     radar_theme.h
+    radar_geo.h
     radar_range.h
     radar_display.h
     runway_overlay.h
@@ -155,6 +160,7 @@ src/
   main.cpp
   data/
     large_airports_data.cpp
+  debug/
   hardware/
   ui/
   services/
@@ -182,7 +188,7 @@ pio device monitor
 
 - PlatformIO env: **`supermini`**
 - Serial: **115200** baud
-- USB CDC on boot enabled in `platformio.ini` for the Super Mini
+- USB CDC on boot enabled in `platformio.ini` for the Super Mini (writes are non-blocking so an open USB cable without a monitor does not stall the radar)
 
 ### Web-flashable release image
 
