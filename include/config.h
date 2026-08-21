@@ -61,9 +61,9 @@ constexpr bool kAdsbShowGroundAircraft = false;
 
 /**
  * USB serial timing line each ADS-B cycle (`perf ...`).
- * Leave on while hunting stalls; it is cheap vs HTTPS.
+ * Off for normal use; set true when hunting stalls.
  */
-constexpr bool kEnablePerfLog = true;
+constexpr bool kEnablePerfLog = false;
 
 // --- UI colors (RGB565) — status screens ---
 constexpr uint16_t kColorBlack = 0x0000;
