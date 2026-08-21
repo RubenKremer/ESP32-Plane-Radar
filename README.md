@@ -57,14 +57,14 @@ The same portal runs on the setup AP and on the device’s LAN IP while connecte
 - **Latitude / Longitude** — radar center and ADS-B query position
 - **Display distances in miles** — ring scale in **mi** instead of **km**
 - **Airports** — show runway overlay; show ICAO labels (independently)
-- **Aircraft** — show flight/callsign, aircraft type, altitude (each optional); altitude in **ft** vs **m** (default ft); optional **ground speed** tag (default off) in **kt** vs **km/h** (default kt)
+- **Aircraft** — show flight/callsign, aircraft type, altitude (each optional); altitude in **ft** vs **m** (default ft); optional **ground speed** tag (default off) in **kt** vs **km/h** (default kt); **aircraft trails** — Off by default, or 4 / 8 / 12 / 16 history points per plane (dark grey breadcrumb segments, one point per poll; older segments fade)
 - **Range preset** — 5 / 10 / 15 / 25 km (labels show both km and mi, e.g. `10 km / 6 mi`); same as BOOT short tap
 - **Poll interval** — 3 / 5 / 10 / 15 / 30 seconds (default 3 s)
 - **Compass heading at top** — 0–359° (default **0** = north at top); align traffic with how the device is mounted (use a phone compass: hold it level, align its top edge with the top of the display, enter the reading)
 - All choices persist across reboot (NVS `planeradar` namespace)
-- While the radar is on screen and Wi‑Fi is connected, saving range or heading updates the display immediately; on the setup AP only NVS/serial update until the device joins your network
+- While the radar is on screen and Wi‑Fi is connected, saving range, heading, or trails updates the display immediately; on the setup AP only NVS/serial update until the device joins your network
 
-Location, units, runway/aircraft display options, range, poll interval, and compass heading are on **Radar settings** — not on **Configure WiFi** (except Wi‑Fi credentials and radio TX power).
+Location, units, runway/aircraft display options, trails, range, poll interval, and compass heading are on **Radar settings** — not on **Configure WiFi** (except Wi‑Fi credentials and radio TX power).
 
 After a **factory reset** (15 s BOOT hold), the device reboots and opens the setup portal on the next boot (no “Connecting” loop on stale credentials). That one-time behavior is stored in NVS — a normal power cycle afterward reconnects using saved Wi‑Fi as usual.
 
@@ -97,7 +97,7 @@ Preset and miles/km choice persist across reboot (`planeradar` NVS namespace). C
 
 ### Aircraft
 
-- **Inside the outer ring** — red heading triangle, magenta speed vector (clipped at the ring); optional tags (callsign, type, altitude, ground speed) configured in **Radar settings**
+- **Inside the outer ring** — red heading triangle, magenta speed vector (clipped at the ring); optional dark grey **position trail** behind the symbol (Radar settings; older crumbs fade); optional tags (callsign, type, altitude, ground speed) configured in **Radar settings**
 - **Outside the ring** (still within ADS-B fetch) — small **red dot on the screen rim** at the correct bearing (direction cue; not distance-accurate past the ring)
 - **Tags** — placed toward the **center**: west (left) → tag on the **right** of the symbol; east (right) → tag on the **left**
 

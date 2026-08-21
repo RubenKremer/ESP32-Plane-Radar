@@ -12,6 +12,7 @@
 #include "services/radar_location.h"
 #include "services/wifi_setup.h"
 #include "services/wifi_radio.h"
+#include "ui/aircraft_trails.h"
 #include "ui/radar_display.h"
 #include "ui/radar_range.h"
 #include "ui/status_screens.h"
@@ -72,6 +73,7 @@ void fetchAndDrawAircraft() {
     handleBootButton();
     return;
   }
+  ui::trails::onFetchComplete();
   if (!bootButtonHoldScreenActive()) {
     ui::radarDisplayRefreshAircraft();
   }

@@ -88,6 +88,13 @@ constexpr uint8_t kRunwayB = 170;
 constexpr uint8_t kRunwayLabelR = 110;
 constexpr uint8_t kRunwayLabelG = 210;
 constexpr uint8_t kRunwayLabelB = 230;
+constexpr uint8_t kTrailR = 70;
+constexpr uint8_t kTrailG = 76;
+constexpr uint8_t kTrailB = 88;
+/** Oldest trail segment brightness vs newest (never fade to black). */
+constexpr float kTrailFadeFloor = 0.35f;
+/** drawWideLine half-width for aircraft trails (~2 px total). */
+constexpr float kTrailLineHalfWidth = 1.0f;
 
 extern uint16_t kColorBackground;
 extern uint16_t kColorGrid;
@@ -99,5 +106,6 @@ extern uint16_t kColorTagType;
 extern uint16_t kColorTagAltitude;
 extern uint16_t kColorRunway;
 extern uint16_t kColorRunwayLabel;
+extern uint16_t kColorTrail;
 
 }  // namespace ui::radar

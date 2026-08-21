@@ -48,6 +48,7 @@ static const char kPageStyle[] PROGMEM =
 struct FormState {
   uint8_t range_idx;
   uint8_t poll_idx;
+  uint8_t trail_idx;
   char lat[kCoordFieldLen + 1];
   char lon[kCoordFieldLen + 1];
   char heading_at_top[4];
@@ -67,6 +68,7 @@ WiFiManager* s_wm = nullptr;
 void loadFormDefaults(FormState* state) {
   state->range_idx = ui::radar::rangeIndex();
   state->poll_idx = ui::radar::pollIntervalIndex();
+  state->trail_idx = ui::radar::trailPresetIndex();
   snprintf(state->lat, sizeof(state->lat), "%.6f", services::location::lat());
   snprintf(state->lon, sizeof(state->lon), "%.6f", services::location::lon());
   snprintf(state->heading_at_top, sizeof(state->heading_at_top), "%u",
@@ -124,6 +126,25 @@ String buildPollOptions(uint8_t selected) {
   for (size_t i = 0; i < ui::radar::kPollIntervalPresetCount; ++i) {
     ui::radar::formatPollIntervalOption(
         label, sizeof(label), ui::radar::kPollIntervalPresetsMs[i]);
+    opts += F("<option value=\"");
+    opts += static_cast<int>(i);
+    opts += F("\"");
+    if (i == selected) {
+      opts += F(" selected");
+    }
+    opts += F(">");
+    opts += label;
+    opts += F("</option>");
+  }
+  return opts;
+}
+
+String buildTrailOptions(uint8_t selected) {
+  String opts;
+  char label[16];
+  for (size_t i = 0; i < ui::radar::kTrailPresetCount; ++i) {
+    ui::radar::formatTrailPresetOption(
+        label, sizeof(label), ui::radar::kTrailPointPresets[i]);
     opts += F("<option value=\"");
     opts += static_cast<int>(i);
     opts += F("\"");
@@ -205,7 +226,10 @@ String buildFormPage(const FormState& state, const char* error_msg) {
     page += F(" checked");
   }
   page += F("> Display speed in knots instead of km/h</label>"
-            "<label for=\"range_idx\">Range ring label</label>"
+            "<label for=\"trail_idx\">Aircraft trails</label>"
+            "<select name=\"trail_idx\" id=\"trail_idx\">");
+  page += buildTrailOptions(state.trail_idx);
+  page += F("</select><label for=\"range_idx\">Range ring label</label>"
             "<select name=\"range_idx\" id=\"range_idx\">");
   page += buildRangeOptions(state.range_idx);
   page += F("</select><label for=\"poll_idx\">Poll interval</label>"
@@ -275,6 +299,21 @@ bool parseHeadingAtTop(const String& arg, uint16_t* out) {
   return true;
 }
 
+bool parseTrailIndex(const String& arg, uint8_t* out) {
+  if (arg.length() == 0) {
+    return false;
+  }
+  char* end = nullptr;
+  errno = 0;
+  const unsigned long val = strtoul(arg.c_str(), &end, 10);
+  if (end == arg.c_str() || (end != nullptr && *end != '\0') || errno == ERANGE ||
+      val >= ui::radar::kTrailPresetCount) {
+    return false;
+  }
+  *out = static_cast<uint8_t>(val);
+  return true;
+}
+
 void copyField(const String& arg, char* dest, size_t dest_len) {
   if (dest_len == 0) {
     return;
@@ -283,13 +322,14 @@ void copyField(const String& arg, char* dest, size_t dest_len) {
 }
 
 bool readPostForm(FormState* state, bool* range_ok, bool* poll_ok,
-                  bool* location_ok, bool* heading_ok) {
+                  bool* location_ok, bool* heading_ok, bool* trail_ok) {
   FormState defaults = {};
   loadFormDefaults(&defaults);
   *state = defaults;
 
   *range_ok = parseRangeIndex(s_wm->server->arg("range_idx"), &state->range_idx);
   *poll_ok = parsePollIndex(s_wm->server->arg("poll_idx"), &state->poll_idx);
+  *trail_ok = parseTrailIndex(s_wm->server->arg("trail_idx"), &state->trail_idx);
 
   copyField(s_wm->server->arg("radar_lat"), state->lat, sizeof(state->lat));
   copyField(s_wm->server->arg("radar_lon"), state->lon, sizeof(state->lon));
@@ -315,7 +355,7 @@ bool readPostForm(FormState* state, bool* range_ok, bool* poll_ok,
 }
 
 FormState mergeDisplayState(const FormState& submitted, bool range_ok,
-                            bool poll_ok, bool heading_ok) {
+                            bool poll_ok, bool heading_ok, bool trail_ok) {
   FormState display = submitted;
   FormState defaults = {};
   loadFormDefaults(&defaults);
@@ -324,6 +364,9 @@ FormState mergeDisplayState(const FormState& submitted, bool range_ok,
   }
   if (!poll_ok) {
     display.poll_idx = defaults.poll_idx;
+  }
+  if (!trail_ok) {
+    display.trail_idx = defaults.trail_idx;
   }
   if (!heading_ok) {
     snprintf(display.heading_at_top, sizeof(display.heading_at_top), "%u",
@@ -347,6 +390,7 @@ void saveFormState(const FormState& state) {
   if (parseHeadingAtTop(String(state.heading_at_top), &heading)) {
     ui::radar::setHeadingAtTopDeg(heading);
   }
+  ui::radar::setTrailPresetIndex(state.trail_idx);
   ui::radar::setPollIntervalIndex(state.poll_idx);
 }
 
@@ -369,11 +413,13 @@ void handlePost() {
   bool poll_ok = false;
   bool location_ok = false;
   bool heading_ok = false;
-  readPostForm(&submitted, &range_ok, &poll_ok, &location_ok, &heading_ok);
+  bool trail_ok = false;
+  readPostForm(&submitted, &range_ok, &poll_ok, &location_ok, &heading_ok,
+               &trail_ok);
 
-  if (!range_ok || !poll_ok || !location_ok || !heading_ok) {
-    const FormState display =
-        mergeDisplayState(submitted, range_ok, poll_ok, heading_ok);
+  if (!range_ok || !poll_ok || !location_ok || !heading_ok || !trail_ok) {
+    const FormState display = mergeDisplayState(submitted, range_ok, poll_ok,
+                                                heading_ok, trail_ok);
     s_wm->server->send(200, "text/html",
                         buildFormPage(display, "Invalid settings."));
     return;
