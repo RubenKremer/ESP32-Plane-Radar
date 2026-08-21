@@ -480,6 +480,7 @@ uint32_t displayPrefsSignature() {
   h = hashMix(h, radar::showAircraftType() ? 1U : 0U);
   h = hashMix(h, radar::showAircraftAltitude() ? 1U : 0U);
   h = hashMix(h, radar::showAircraftSpeed() ? 1U : 0U);
+  h = hashMix(h, radar::showTrackVector() ? 1U : 0U);
   h = hashMix(h, wifiLanPortalEnabled() ? 1U : 0U);
   h = hashMix(h, static_cast<uint32_t>(radar::headingAtTopDeg()));
   h = hashMix(h, static_cast<uint32_t>(radar::trailPointCount()));
@@ -567,9 +568,11 @@ void drawItems(const AircraftDrawItem* items, size_t draw_count,
     const size_t i = items[d].index;
     const int x = items[d].x;
     const int y = items[d].y;
-    drawSpeedVector(x, y, radar::headingToScreen(planes[i].nose_deg),
-                    radar::headingToScreen(planes[i].track_deg),
-                    planes[i].gs_knots, radar::kColorTrackVector);
+    if (radar::showTrackVector()) {
+      drawSpeedVector(x, y, radar::headingToScreen(planes[i].nose_deg),
+                      radar::headingToScreen(planes[i].track_deg),
+                      planes[i].gs_knots, radar::kColorTrackVector);
+    }
     drawHeadingTriangle(x, y, radar::headingToScreen(planes[i].nose_deg),
                         radar::kColorAircraft);
   }

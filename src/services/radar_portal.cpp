@@ -61,6 +61,7 @@ struct FormState {
   bool show_aircraft_type;
   bool show_aircraft_altitude;
   bool show_aircraft_speed;
+  bool show_track_vector;
 };
 
 WiFiManager* s_wm = nullptr;
@@ -82,6 +83,7 @@ void loadFormDefaults(FormState* state) {
   state->show_aircraft_type = ui::radar::showAircraftType();
   state->show_aircraft_altitude = ui::radar::showAircraftAltitude();
   state->show_aircraft_speed = ui::radar::showAircraftSpeed();
+  state->show_track_vector = ui::radar::showTrackVector();
 }
 
 String pageHead(const char* title) {
@@ -226,6 +228,11 @@ String buildFormPage(const FormState& state, const char* error_msg) {
     page += F(" checked");
   }
   page += F("> Display speed in knots instead of km/h</label>"
+            "<label class=\"cb\"><input type=\"checkbox\" name=\"show_track_vector\" value=\"T\"");
+  if (state.show_track_vector) {
+    page += F(" checked");
+  }
+  page += F("> Show track vector</label>"
             "<label for=\"trail_idx\">Aircraft trails</label>"
             "<select name=\"trail_idx\" id=\"trail_idx\">");
   page += buildTrailOptions(state.trail_idx);
@@ -351,6 +358,7 @@ bool readPostForm(FormState* state, bool* range_ok, bool* poll_ok,
   state->show_aircraft_type = s_wm->server->hasArg("show_aircraft_type");
   state->show_aircraft_altitude = s_wm->server->hasArg("show_aircraft_altitude");
   state->show_aircraft_speed = s_wm->server->hasArg("show_aircraft_speed");
+  state->show_track_vector = s_wm->server->hasArg("show_track_vector");
   return true;
 }
 
@@ -391,6 +399,7 @@ void saveFormState(const FormState& state) {
     ui::radar::setHeadingAtTopDeg(heading);
   }
   ui::radar::setTrailPresetIndex(state.trail_idx);
+  ui::radar::saveTrackVectorFromPortal(state.show_track_vector ? "T" : "");
   ui::radar::setPollIntervalIndex(state.poll_idx);
 }
 
