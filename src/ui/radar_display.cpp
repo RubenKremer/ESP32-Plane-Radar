@@ -477,6 +477,7 @@ uint32_t displayPrefsSignature() {
   h = hashMix(h, radar::showAircraftAltitude() ? 1U : 0U);
   h = hashMix(h, radar::showAircraftSpeed() ? 1U : 0U);
   h = hashMix(h, wifiLanPortalEnabled() ? 1U : 0U);
+  h = hashMix(h, static_cast<uint32_t>(radar::headingAtTopDeg()));
   return h;
 }
 
@@ -502,8 +503,6 @@ void computeDrawItems(AircraftDrawItem* items, size_t* draw_count,
   const size_t n = services::adsb::aircraftCount();
   const services::adsb::Aircraft* planes = services::adsb::aircraftList();
   const float inner_max_km = innerRingMaxKm();
-  const float px_per_km =
-      static_cast<float>(radar::kGridOuterRadius) / radar::rangeCurrent().outer_km;
   const int rim_r = radar::kCenterX - radar::kBeyondRingScreenMarginPx;
 
   *draw_count = 0;
@@ -517,10 +516,9 @@ void computeDrawItems(AircraftDrawItem* items, size_t* draw_count,
                               &dist_km);
 
     if (dist_km <= inner_max_km) {
-      const int x =
-          radar::kCenterX + static_cast<int>(lroundf(dx_km * px_per_km));
-      const int y =
-          radar::kCenterY - static_cast<int>(lroundf(dy_km * px_per_km));
+      int x = 0;
+      int y = 0;
+      radar::latLonToScreen(planes[i].lat, planes[i].lon, &x, &y);
       items[*draw_count].index = i;
       items[*draw_count].x = x;
       items[*draw_count].y = y;
@@ -532,11 +530,14 @@ void computeDrawItems(AircraftDrawItem* items, size_t* draw_count,
     if (dist_km < 0.01f) {
       continue;
     }
+    float screen_east = 0.0f;
+    float screen_north = 0.0f;
+    radar::rotateMapOffset(dx_km, dy_km, &screen_east, &screen_north);
     const float scale = static_cast<float>(rim_r) / dist_km;
     const int dot_x =
-        radar::kCenterX + static_cast<int>(lroundf(dx_km * scale));
+        radar::kCenterX + static_cast<int>(lroundf(screen_east * scale));
     const int dot_y =
-        radar::kCenterY - static_cast<int>(lroundf(dy_km * scale));
+        radar::kCenterY - static_cast<int>(lroundf(screen_north * scale));
     dots[*dot_count].x = dot_x;
     dots[*dot_count].y = dot_y;
     dots[*dot_count].dist_sq = radar::distSqFromCenter(dot_x, dot_y);
@@ -559,9 +560,11 @@ void drawItems(const AircraftDrawItem* items, size_t draw_count,
     const size_t i = items[d].index;
     const int x = items[d].x;
     const int y = items[d].y;
-    drawSpeedVector(x, y, planes[i].nose_deg, planes[i].track_deg,
+    drawSpeedVector(x, y, radar::headingToScreen(planes[i].nose_deg),
+                    radar::headingToScreen(planes[i].track_deg),
                     planes[i].gs_knots, radar::kColorTrackVector);
-    drawHeadingTriangle(x, y, planes[i].nose_deg, radar::kColorAircraft);
+    drawHeadingTriangle(x, y, radar::headingToScreen(planes[i].nose_deg),
+                        radar::kColorAircraft);
   }
   if (radar::anyAircraftTagEnabled()) {
     initTagLabelMetrics();
@@ -649,13 +652,18 @@ void drawCenterDot(int cx, int cy) {
 void drawCardinalLabels() {
   const int cx = radar::kCenterX;
   const int cy = radar::kCenterY;
-  const int edge = radar::kSize - 1;
+  constexpr const char* kCardinals[] = {"N", "E", "S", "W"};
+  constexpr float kDegToRad = 0.01745329252f;
+  constexpr int kLabelRadius =
+      radar::kCenterX - radar::kCardinalLabelHeightPx / 2 + 1;
 
-  drawCardinalLabel("N", cx, radar::kCardinalNorthOffsetY, textdatum_t::top_center);
-  drawCardinalLabel("S", cx, edge + radar::kCardinalSouthOffsetY,
-                    textdatum_t::bottom_center);
-  drawCardinalLabel("W", 0, cy, textdatum_t::middle_left);
-  drawCardinalLabel("E", edge, cy, textdatum_t::middle_right);
+  for (size_t i = 0; i < 4; ++i) {
+    const float true_heading = static_cast<float>(i * 90U);
+    const float angle = radar::headingToScreen(true_heading) * kDegToRad;
+    const int x = cx + static_cast<int>(lroundf(sinf(angle) * kLabelRadius));
+    const int y = cy - static_cast<int>(lroundf(cosf(angle) * kLabelRadius));
+    drawCardinalLabel(kCardinals[i], x, y, textdatum_t::middle_center);
+  }
 }
 
 int scaleLabelAnchorX(int cx, int outer_radius) {

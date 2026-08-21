@@ -50,6 +50,7 @@ struct FormState {
   uint8_t poll_idx;
   char lat[kCoordFieldLen + 1];
   char lon[kCoordFieldLen + 1];
+  char heading_at_top[4];
   bool use_miles;
   bool use_feet_for_altitude;
   bool use_knots_for_speed;
@@ -68,6 +69,8 @@ void loadFormDefaults(FormState* state) {
   state->poll_idx = ui::radar::pollIntervalIndex();
   snprintf(state->lat, sizeof(state->lat), "%.6f", services::location::lat());
   snprintf(state->lon, sizeof(state->lon), "%.6f", services::location::lon());
+  snprintf(state->heading_at_top, sizeof(state->heading_at_top), "%u",
+           ui::radar::headingAtTopDeg());
   state->use_miles = ui::radar::useMiles();
   state->use_feet_for_altitude = ui::radar::useFeetForAltitude();
   state->use_knots_for_speed = ui::radar::useKnotsForSpeed();
@@ -208,7 +211,14 @@ String buildFormPage(const FormState& state, const char* error_msg) {
   page += F("</select><label for=\"poll_idx\">Poll interval</label>"
             "<select name=\"poll_idx\" id=\"poll_idx\">");
   page += buildPollOptions(state.poll_idx);
-  page += F("</select><br/><button type=\"submit\">Save</button></form>");
+  page += F("</select><label for=\"heading_at_top\">Compass heading at top (deg)</label>"
+            "<input id=\"heading_at_top\" name=\"heading_at_top\" type=\"number\" "
+            "min=\"0\" max=\"359\" step=\"1\" maxlength=\"3\" value=\"");
+  page += state.heading_at_top;
+  page += F("\"><p class=\"section\" style=\"font-weight:400;margin-top:0\">"
+            "Hold a phone compass level, align its top edge with the top of the "
+            "display, and enter the reading (0 = north at top).</p>"
+            "<br/><button type=\"submit\">Save</button></form>");
   page += pageFoot();
   return page;
 }
@@ -250,6 +260,21 @@ bool parsePollIndex(const String& arg, uint8_t* out) {
   return true;
 }
 
+bool parseHeadingAtTop(const String& arg, uint16_t* out) {
+  if (arg.length() == 0) {
+    return false;
+  }
+  char* end = nullptr;
+  errno = 0;
+  const long val = strtol(arg.c_str(), &end, 10);
+  if (end == arg.c_str() || (end != nullptr && *end != '\0') || errno == ERANGE ||
+      val < 0 || val > 359) {
+    return false;
+  }
+  *out = static_cast<uint16_t>(val);
+  return true;
+}
+
 void copyField(const String& arg, char* dest, size_t dest_len) {
   if (dest_len == 0) {
     return;
@@ -257,7 +282,8 @@ void copyField(const String& arg, char* dest, size_t dest_len) {
   arg.toCharArray(dest, dest_len);
 }
 
-bool readPostForm(FormState* state, bool* range_ok, bool* poll_ok, bool* location_ok) {
+bool readPostForm(FormState* state, bool* range_ok, bool* poll_ok,
+                  bool* location_ok, bool* heading_ok) {
   FormState defaults = {};
   loadFormDefaults(&defaults);
   *state = defaults;
@@ -268,6 +294,13 @@ bool readPostForm(FormState* state, bool* range_ok, bool* poll_ok, bool* locatio
   copyField(s_wm->server->arg("radar_lat"), state->lat, sizeof(state->lat));
   copyField(s_wm->server->arg("radar_lon"), state->lon, sizeof(state->lon));
   *location_ok = services::location::validateStrings(state->lat, state->lon);
+
+  uint16_t heading = 0;
+  *heading_ok =
+      parseHeadingAtTop(s_wm->server->arg("heading_at_top"), &heading);
+  if (*heading_ok) {
+    snprintf(state->heading_at_top, sizeof(state->heading_at_top), "%u", heading);
+  }
 
   state->use_miles = s_wm->server->hasArg("use_miles");
   state->use_feet_for_altitude = s_wm->server->hasArg("use_feet_for_altitude");
@@ -281,7 +314,8 @@ bool readPostForm(FormState* state, bool* range_ok, bool* poll_ok, bool* locatio
   return true;
 }
 
-FormState mergeDisplayState(const FormState& submitted, bool range_ok, bool poll_ok) {
+FormState mergeDisplayState(const FormState& submitted, bool range_ok,
+                            bool poll_ok, bool heading_ok) {
   FormState display = submitted;
   FormState defaults = {};
   loadFormDefaults(&defaults);
@@ -290,6 +324,10 @@ FormState mergeDisplayState(const FormState& submitted, bool range_ok, bool poll
   }
   if (!poll_ok) {
     display.poll_idx = defaults.poll_idx;
+  }
+  if (!heading_ok) {
+    snprintf(display.heading_at_top, sizeof(display.heading_at_top), "%u",
+             ui::radar::headingAtTopDeg());
   }
   return display;
 }
@@ -305,6 +343,10 @@ void saveFormState(const FormState& state) {
       state.show_aircraft_callsign, state.show_aircraft_type,
       state.show_aircraft_altitude, state.show_aircraft_speed);
   ui::radar::setRangeIndex(state.range_idx);
+  uint16_t heading = 0;
+  if (parseHeadingAtTop(String(state.heading_at_top), &heading)) {
+    ui::radar::setHeadingAtTopDeg(heading);
+  }
   ui::radar::setPollIntervalIndex(state.poll_idx);
 }
 
@@ -326,10 +368,12 @@ void handlePost() {
   bool range_ok = false;
   bool poll_ok = false;
   bool location_ok = false;
-  readPostForm(&submitted, &range_ok, &poll_ok, &location_ok);
+  bool heading_ok = false;
+  readPostForm(&submitted, &range_ok, &poll_ok, &location_ok, &heading_ok);
 
-  if (!range_ok || !poll_ok || !location_ok) {
-    const FormState display = mergeDisplayState(submitted, range_ok, poll_ok);
+  if (!range_ok || !poll_ok || !location_ok || !heading_ok) {
+    const FormState display =
+        mergeDisplayState(submitted, range_ok, poll_ok, heading_ok);
     s_wm->server->send(200, "text/html",
                         buildFormPage(display, "Invalid settings."));
     return;

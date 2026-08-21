@@ -24,6 +24,7 @@ constexpr char kPrefsTagTypeKey[] = "tagType";
 constexpr char kPrefsTagAltKey[] = "tagAlt";
 constexpr char kPrefsTagSpeedKey[] = "tagSpd";
 constexpr char kPrefsPollKey[] = "pollIdx";
+constexpr char kPrefsHeadingKey[] = "headingTop";
 constexpr uint8_t kDefaultRangeIndex = 1;  // 10 km ring
 constexpr float kKmPerMile = 1.609344f;
 
@@ -41,6 +42,7 @@ bool s_show_aircraft_altitude = true;
 bool s_show_aircraft_speed = false;
 bool s_range_dirty = false;
 bool s_poll_timer_reset = false;
+uint16_t s_heading_at_top_deg = 0;
 
 void saveRangeIndex() {
   if (!s_prefs.begin(kPrefsNamespace, false)) {
@@ -109,6 +111,14 @@ void savePollIndex() {
   s_prefs.end();
 }
 
+void saveHeadingAtTop() {
+  if (!s_prefs.begin(kPrefsNamespace, false)) {
+    return;
+  }
+  s_prefs.putUShort(kPrefsHeadingKey, s_heading_at_top_deg);
+  s_prefs.end();
+}
+
 bool portalCheckboxChecked(const char* value) {
   if (value == nullptr || value[0] == '\0') {
     return false;
@@ -144,6 +154,8 @@ void rangeInit() {
   s_poll_index = (saved_poll < kPollIntervalPresetCount)
                      ? saved_poll
                      : kDefaultPollIntervalIndex;
+  const uint16_t saved_heading = s_prefs.getUShort(kPrefsHeadingKey, 0);
+  s_heading_at_top_deg = (saved_heading <= 359) ? saved_heading : 0;
   s_prefs.end();
 }
 
@@ -319,6 +331,22 @@ void formatAircraftSpeedLabel(char* buf, size_t len, float gs_knots) {
   }
 }
 
+uint16_t headingAtTopDeg() { return s_heading_at_top_deg; }
+
+bool setHeadingAtTopDeg(uint16_t heading) {
+  if (heading > 359) {
+    return false;
+  }
+  if (heading == s_heading_at_top_deg) {
+    return true;
+  }
+  s_heading_at_top_deg = heading;
+  saveHeadingAtTop();
+  s_range_dirty = true;
+  Serial.printf("Heading at top: %u degrees\n", s_heading_at_top_deg);
+  return true;
+}
+
 void unitsReset() {
   s_use_miles = false;
   s_use_feet_for_altitude = true;
@@ -329,6 +357,7 @@ void unitsReset() {
   s_show_aircraft_type = true;
   s_show_aircraft_altitude = true;
   s_show_aircraft_speed = false;
+  s_heading_at_top_deg = 0;
   if (s_prefs.begin(kPrefsNamespace, false)) {
     s_prefs.remove(kPrefsMilesKey);
     s_prefs.remove(kPrefsAltFeetKey);
@@ -339,6 +368,7 @@ void unitsReset() {
     s_prefs.remove(kPrefsTagTypeKey);
     s_prefs.remove(kPrefsTagAltKey);
     s_prefs.remove(kPrefsTagSpeedKey);
+    s_prefs.remove(kPrefsHeadingKey);
     s_prefs.end();
   }
 }
