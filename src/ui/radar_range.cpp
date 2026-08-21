@@ -24,6 +24,7 @@ constexpr char kPrefsTagCallsignKey[] = "tagCall";
 constexpr char kPrefsTagTypeKey[] = "tagType";
 constexpr char kPrefsTagAltKey[] = "tagAlt";
 constexpr char kPrefsTagSpeedKey[] = "tagSpd";
+constexpr char kPrefsTrackVecKey[] = "showTrkVec";
 constexpr char kPrefsPollKey[] = "pollIdx";
 constexpr char kPrefsHeadingKey[] = "headingTop";
 constexpr char kPrefsTrailKey[] = "trailPts";
@@ -42,6 +43,7 @@ bool s_show_aircraft_callsign = true;
 bool s_show_aircraft_type = true;
 bool s_show_aircraft_altitude = true;
 bool s_show_aircraft_speed = false;
+bool s_show_track_vector = true;
 bool s_range_dirty = false;
 bool s_poll_timer_reset = false;
 uint16_t s_heading_at_top_deg = 0;
@@ -106,6 +108,14 @@ void saveAircraftLabelPrefs() {
   s_prefs.end();
 }
 
+void saveShowTrackVector() {
+  if (!s_prefs.begin(kPrefsNamespace, false)) {
+    return;
+  }
+  s_prefs.putBool(kPrefsTrackVecKey, s_show_track_vector);
+  s_prefs.end();
+}
+
 void savePollIndex() {
   if (!s_prefs.begin(kPrefsNamespace, false)) {
     return;
@@ -160,6 +170,7 @@ void rangeInit() {
   s_show_aircraft_type = s_prefs.getBool(kPrefsTagTypeKey, true);
   s_show_aircraft_altitude = s_prefs.getBool(kPrefsTagAltKey, true);
   s_show_aircraft_speed = s_prefs.getBool(kPrefsTagSpeedKey, false);
+  s_show_track_vector = s_prefs.getBool(kPrefsTrackVecKey, true);
   const uint8_t saved_poll =
       s_prefs.getUChar(kPrefsPollKey, kDefaultPollIntervalIndex);
   s_poll_index = (saved_poll < kPollIntervalPresetCount)
@@ -229,6 +240,8 @@ bool showAircraftAltitude() { return s_show_aircraft_altitude; }
 
 bool showAircraftSpeed() { return s_show_aircraft_speed; }
 
+bool showTrackVector() { return s_show_track_vector; }
+
 bool anyAircraftTagEnabled() {
   return s_show_aircraft_callsign || s_show_aircraft_type ||
          s_show_aircraft_altitude || s_show_aircraft_speed;
@@ -278,6 +291,16 @@ void saveAircraftTagsFromPortal(bool callsign, bool type, bool altitude,
                 s_show_aircraft_type ? "on" : "off",
                 s_show_aircraft_altitude ? "on" : "off",
                 s_show_aircraft_speed ? "on" : "off");
+}
+
+void saveTrackVectorFromPortal(const char* checkbox_value) {
+  const bool on = portalCheckboxChecked(checkbox_value);
+  if (on != s_show_track_vector) {
+    s_range_dirty = true;
+  }
+  s_show_track_vector = on;
+  saveShowTrackVector();
+  Serial.printf("Track vector: %s\n", s_show_track_vector ? "on" : "off");
 }
 
 void formatRing3Label(char* buf, size_t len, float ring3_km, bool use_miles) {
@@ -405,6 +428,7 @@ void unitsReset() {
   s_show_aircraft_type = true;
   s_show_aircraft_altitude = true;
   s_show_aircraft_speed = false;
+  s_show_track_vector = true;
   s_heading_at_top_deg = 0;
   s_trail_index = kDefaultTrailPresetIndex;
   trails::clear();
@@ -418,6 +442,7 @@ void unitsReset() {
     s_prefs.remove(kPrefsTagTypeKey);
     s_prefs.remove(kPrefsTagAltKey);
     s_prefs.remove(kPrefsTagSpeedKey);
+    s_prefs.remove(kPrefsTrackVecKey);
     s_prefs.remove(kPrefsHeadingKey);
     s_prefs.remove(kPrefsTrailKey);
     s_prefs.end();

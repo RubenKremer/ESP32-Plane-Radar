@@ -63,6 +63,7 @@ bool showAircraftCallsign();
 bool showAircraftType();
 bool showAircraftAltitude();
 bool showAircraftSpeed();
+bool showTrackVector();
 bool anyAircraftTagEnabled();
 /** WiFi portal checkbox: "T" = miles, otherwise km. */
 void saveMilesFromPortal(const char* checkbox_value);
@@ -72,6 +73,7 @@ void saveRunwaysFromPortal(const char* checkbox_value);
 void saveAirportLabelsFromPortal(const char* checkbox_value);
 void saveAircraftTagsFromPortal(bool callsign, bool type, bool altitude,
                                 bool speed);
+void saveTrackVectorFromPortal(const char* checkbox_value);
 void formatRing3Label(char* buf, size_t len, float ring3_km, bool use_miles);
 void formatCurrentRing3Label(char* buf, size_t len);
 /** Portal dropdown: dual-unit spaced label, e.g. "10 km / 6 mi". */
