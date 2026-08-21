@@ -14,6 +14,7 @@
 #include "services/adsb_client.h"
 #include "services/radar_location.h"
 #include "services/wifi_setup.h"
+#include "ui/aircraft_trails.h"
 #include "ui/radar_geo.h"
 #include "ui/radar_range.h"
 #include "ui/radar_theme.h"
@@ -32,6 +33,7 @@ uint16_t kColorTagType = 0x5DFF;
 uint16_t kColorTagAltitude = 0xFFE0;
 uint16_t kColorRunway = 0x4D5F;
 uint16_t kColorRunwayLabel = 0x7DFF;
+uint16_t kColorTrail = 0x4208;
 
 }  // namespace radar
 
@@ -201,6 +203,8 @@ void initPalette() {
       tft.color565(radar::kRunwayR, radar::kRunwayG, radar::kRunwayB);
   radar::kColorRunwayLabel = tft.color565(radar::kRunwayLabelR, radar::kRunwayLabelG,
                                           radar::kRunwayLabelB);
+  radar::kColorTrail =
+      tft.color565(radar::kTrailR, radar::kTrailG, radar::kTrailB);
 }
 
 float innerRingMaxKm() {
@@ -478,6 +482,7 @@ uint32_t displayPrefsSignature() {
   h = hashMix(h, radar::showAircraftSpeed() ? 1U : 0U);
   h = hashMix(h, wifiLanPortalEnabled() ? 1U : 0U);
   h = hashMix(h, static_cast<uint32_t>(radar::headingAtTopDeg()));
+  h = hashMix(h, static_cast<uint32_t>(radar::trailPointCount()));
   return h;
 }
 
@@ -555,6 +560,8 @@ void drawItems(const AircraftDrawItem* items, size_t draw_count,
   for (size_t d = 0; d < dot_count; ++d) {
     drawBeyondRingDot(dots[d].x, dots[d].y);
   }
+
+  trails::draw(*s_draw);
 
   for (size_t d = 0; d < draw_count; ++d) {
     const size_t i = items[d].index;

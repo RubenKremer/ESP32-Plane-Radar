@@ -94,4 +94,16 @@ uint16_t headingAtTopDeg();
 /** Persist heading 0–359; marks dirty on change. Returns false if out of range. */
 bool setHeadingAtTopDeg(uint16_t heading);
 
+/** Aircraft trail point presets (index 0 = off). */
+constexpr uint8_t kTrailPointPresets[] = {0, 4, 8, 12, 16};
+constexpr size_t kTrailPresetCount =
+    sizeof(kTrailPointPresets) / sizeof(kTrailPointPresets[0]);
+constexpr uint8_t kDefaultTrailPresetIndex = 0;
+
+uint8_t trailPresetIndex();
+/** Active trail point count (0 when off). */
+uint8_t trailPointCount();
+bool setTrailPresetIndex(uint8_t idx);
+void formatTrailPresetOption(char* buf, size_t len, uint8_t point_count);
+
 }  // namespace ui::radar

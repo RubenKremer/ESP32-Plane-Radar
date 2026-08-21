@@ -1,5 +1,6 @@
 #include "ui/radar_range.h"
 
+#include "ui/aircraft_trails.h"
 #include "ui/radar_theme.h"
 
 #include <Arduino.h>
@@ -25,6 +26,7 @@ constexpr char kPrefsTagAltKey[] = "tagAlt";
 constexpr char kPrefsTagSpeedKey[] = "tagSpd";
 constexpr char kPrefsPollKey[] = "pollIdx";
 constexpr char kPrefsHeadingKey[] = "headingTop";
+constexpr char kPrefsTrailKey[] = "trailPts";
 constexpr uint8_t kDefaultRangeIndex = 1;  // 10 km ring
 constexpr float kKmPerMile = 1.609344f;
 
@@ -43,6 +45,7 @@ bool s_show_aircraft_speed = false;
 bool s_range_dirty = false;
 bool s_poll_timer_reset = false;
 uint16_t s_heading_at_top_deg = 0;
+uint8_t s_trail_index = kDefaultTrailPresetIndex;
 
 void saveRangeIndex() {
   if (!s_prefs.begin(kPrefsNamespace, false)) {
@@ -119,6 +122,14 @@ void saveHeadingAtTop() {
   s_prefs.end();
 }
 
+void saveTrailIndex() {
+  if (!s_prefs.begin(kPrefsNamespace, false)) {
+    return;
+  }
+  s_prefs.putUChar(kPrefsTrailKey, s_trail_index);
+  s_prefs.end();
+}
+
 bool portalCheckboxChecked(const char* value) {
   if (value == nullptr || value[0] == '\0') {
     return false;
@@ -156,6 +167,10 @@ void rangeInit() {
                      : kDefaultPollIntervalIndex;
   const uint16_t saved_heading = s_prefs.getUShort(kPrefsHeadingKey, 0);
   s_heading_at_top_deg = (saved_heading <= 359) ? saved_heading : 0;
+  const uint8_t saved_trail =
+      s_prefs.getUChar(kPrefsTrailKey, kDefaultTrailPresetIndex);
+  s_trail_index = (saved_trail < kTrailPresetCount) ? saved_trail
+                                                    : kDefaultTrailPresetIndex;
   s_prefs.end();
 }
 
@@ -347,6 +362,39 @@ bool setHeadingAtTopDeg(uint16_t heading) {
   return true;
 }
 
+uint8_t trailPresetIndex() { return s_trail_index; }
+
+uint8_t trailPointCount() { return kTrailPointPresets[s_trail_index]; }
+
+bool setTrailPresetIndex(uint8_t idx) {
+  if (idx >= kTrailPresetCount) {
+    return false;
+  }
+  if (idx == s_trail_index) {
+    return true;
+  }
+  s_trail_index = idx;
+  saveTrailIndex();
+  s_range_dirty = true;
+  const uint8_t points = trailPointCount();
+  if (points == 0) {
+    trails::clear();
+  } else {
+    trails::trimToPointCount(points);
+  }
+  Serial.printf("Aircraft trails: %s\n",
+                  points == 0 ? "off" : "on");
+  return true;
+}
+
+void formatTrailPresetOption(char* buf, size_t len, uint8_t point_count) {
+  if (point_count == 0) {
+    snprintf(buf, len, "Off");
+  } else {
+    snprintf(buf, len, "%u points", static_cast<unsigned>(point_count));
+  }
+}
+
 void unitsReset() {
   s_use_miles = false;
   s_use_feet_for_altitude = true;
@@ -358,6 +406,8 @@ void unitsReset() {
   s_show_aircraft_altitude = true;
   s_show_aircraft_speed = false;
   s_heading_at_top_deg = 0;
+  s_trail_index = kDefaultTrailPresetIndex;
+  trails::clear();
   if (s_prefs.begin(kPrefsNamespace, false)) {
     s_prefs.remove(kPrefsMilesKey);
     s_prefs.remove(kPrefsAltFeetKey);
@@ -369,6 +419,7 @@ void unitsReset() {
     s_prefs.remove(kPrefsTagAltKey);
     s_prefs.remove(kPrefsTagSpeedKey);
     s_prefs.remove(kPrefsHeadingKey);
+    s_prefs.remove(kPrefsTrailKey);
     s_prefs.end();
   }
 }
