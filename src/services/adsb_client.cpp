@@ -27,10 +27,12 @@ constexpr float kKmPerNm = 1.852f;
 constexpr int kConnectTimeoutMs = 5000;
 constexpr unsigned long kRequestTimeoutMs = 6000;
 
-/** Dead-reckoning: cap the fix age taken from seen_pos, and the total time a
- *  position is projected forward, so a stale or turning aircraft isn't flung
- *  far off its real position (e.g. with a long poll interval). */
-constexpr uint32_t kMaxPosAgeMs = 30000;
+/** Dead-reckoning: cap the total time a position is projected forward, so a
+ *  stale or turning aircraft isn't flung far off its real position (e.g. with
+ *  a long poll interval). This is the only cap: the time is measured from when
+ *  the fix was taken (seen_pos), so a fix the feed keeps repeating yields a
+ *  continuous estimate that stops here. A separate, smaller cap on seen_pos
+ *  made the estimate jump back on every fetch once a fix aged past it. */
 constexpr unsigned long kMaxExtrapolationMs = 60000;
 
 Aircraft s_aircraft[kMaxAircraft];
@@ -518,12 +520,15 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
     s_aircraft[n].gs_knots = pickGroundSpeed(plane);
 
     // seen_pos: seconds since this position was measured (often 10-30 s).
+    // Clamped only to the projection limit (so the conversion can't
+    // overflow); estimatedPosition() applies the limit to the total.
     float seen_pos_s = 0.0f;
     readJsonFloat(plane, "seen_pos", &seen_pos_s);
-    uint32_t age_ms =
-        seen_pos_s > 0.0f ? static_cast<uint32_t>(seen_pos_s * 1000.0f) : 0;
-    if (age_ms > kMaxPosAgeMs) {
-      age_ms = kMaxPosAgeMs;
+    uint32_t age_ms = 0;
+    if (seen_pos_s > 0.0f) {
+      age_ms = seen_pos_s * 1000.0f >= static_cast<float>(kMaxExtrapolationMs)
+                   ? static_cast<uint32_t>(kMaxExtrapolationMs)
+                   : static_cast<uint32_t>(seen_pos_s * 1000.0f);
     }
     s_aircraft[n].pos_age_ms = age_ms;
 

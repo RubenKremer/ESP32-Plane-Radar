@@ -110,7 +110,7 @@ Preset and miles/km choice persist across reboot (`planeradar` NVS namespace). C
 
 As range decreases (or aircraft approach), targets move inward; beyond-ring dots become full symbols when they cross the outer ring.
 
-**Smooth motion:** between fetches, each aircraft is moved along its ground track at its ground speed, and the radar redraws at **4 Hz** (`kRadarRedrawIntervalMs`). A frame is only repainted when something moved by a pixel. The estimate starts from when the position was measured, not when it was fetched: adsb.fi’s `seen_pos` is often 10–30 s old, and is capped at 30 s. Total projection is capped at 60 s, so a long poll interval can’t throw a turning aircraft far off course. Positions snap back to real data on every fetch, and motion pauses briefly while a fetch is in progress. Trails record the estimated position at each fetch, with a live segment to the moving symbol.
+**Smooth motion:** between fetches, each aircraft is moved along its ground track at its ground speed, and the radar redraws at **4 Hz** (`kRadarRedrawIntervalMs`). A frame is only repainted when something moved by a pixel. The estimate starts from when the position was measured, not when it was fetched: adsb.fi’s `seen_pos` is often 10–30 s old. Projection from that moment is capped at 60 s, so a long poll interval or a fix that stops updating can’t throw an aircraft far off course; a stale fix stops at the cap rather than jumping back. Positions are corrected to real data on every fetch (a small snap when an aircraft turned or changed speed), and motion pauses briefly while a fetch is in progress. Trails record the estimated position at each fetch, with a live segment to the moving symbol.
 
 ### ADS-B
 
