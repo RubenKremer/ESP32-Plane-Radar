@@ -1,5 +1,6 @@
 #include "ui/aircraft_trails.h"
 
+#include <Arduino.h>
 #include <LovyanGFX.hpp>
 #include <cmath>
 #include <cstring>
@@ -40,12 +41,32 @@ float innerRingMaxKm() {
           static_cast<float>(radar::kGridOuterRadius));
 }
 
+/** Where the aircraft is drawn right now (dead-reckoned), so trails line up
+ *  with the moving symbol rather than its older fix. */
+void positionNow(const services::adsb::Aircraft& ac, float* lat, float* lon) {
+  services::adsb::estimatedPosition(ac, millis(), lat, lon);
+}
+
 bool aircraftInsideInnerRing(const services::adsb::Aircraft& ac) {
+  float lat = 0.0f;
+  float lon = 0.0f;
+  positionNow(ac, &lat, &lon);
   float dx_km = 0.0f;
   float dy_km = 0.0f;
   float dist_km = 0.0f;
-  radar::offsetKmFromCenter(ac.lat, ac.lon, &dx_km, &dy_km, &dist_km);
+  radar::offsetKmFromCenter(lat, lon, &dx_km, &dy_km, &dist_km);
   return dist_km <= innerRingMaxKm();
+}
+
+const services::adsb::Aircraft* findAircraft(const char* hex) {
+  const size_t n = services::adsb::aircraftCount();
+  const services::adsb::Aircraft* planes = services::adsb::aircraftList();
+  for (size_t i = 0; i < n; ++i) {
+    if (strcmp(planes[i].hex, hex) == 0) {
+      return &planes[i];
+    }
+  }
+  return nullptr;
 }
 
 bool hexValid(const char* hex) { return hex != nullptr && hex[0] != '\0'; }
@@ -158,7 +179,12 @@ void onFetchComplete() {
     }
     slot->unseen_polls = 0;
     trimSlotToLimit(slot, max_points);
-    appendPoint(slot, ac.lat, ac.lon, max_points);
+    // Record where the aircraft is estimated to be now (its fix moved on by
+    // the fix's age), matching where the symbol is drawn.
+    float lat = 0.0f;
+    float lon = 0.0f;
+    positionNow(ac, &lat, &lon);
+    appendPoint(slot, lat, lon, max_points);
   }
 
   for (size_t s = 0; s < s_slot_count; ++s) {
@@ -213,22 +239,47 @@ void draw(lgfx::LGFXBase& gfx) {
 
   for (size_t s = 0; s < s_slot_count; ++s) {
     const TrailSlot& slot = s_slots[s];
-    if (slot.count < 2) {
+    if (slot.count == 0) {
       continue;
     }
     const uint8_t draw_count =
         slot.count > max_points ? max_points : slot.count;
     const size_t start = slot.count - draw_count;
-    const size_t segment_count = draw_count - 1;
+
+    // Live segment: from the newest recorded point to where the aircraft is
+    // drawn now, so the trail stays attached while it moves between fetches.
+    const services::adsb::Aircraft* ac = findAircraft(slot.hex);
+    const bool live = ac != nullptr && aircraftInsideInnerRing(*ac);
+    int live_x = 0;
+    int live_y = 0;
+    if (live) {
+      float lat = 0.0f;
+      float lon = 0.0f;
+      positionNow(*ac, &lat, &lon);
+      radar::latLonToScreen(lat, lon, &live_x, &live_y);
+    }
+
+    const size_t segment_count = (draw_count - 1) + (live ? 1 : 0);
+    if (segment_count == 0) {
+      continue;
+    }
+
     int prev_x = 0;
     int prev_y = 0;
     radar::latLonToScreen(slot.points[start].lat, slot.points[start].lon,
                           &prev_x, &prev_y);
     size_t segment_i = 0;
-    for (size_t p = start + 1; p < slot.count; ++p) {
+    for (size_t p = start + 1; p <= slot.count; ++p) {
       int x = 0;
       int y = 0;
-      radar::latLonToScreen(slot.points[p].lat, slot.points[p].lon, &x, &y);
+      if (p < slot.count) {
+        radar::latLonToScreen(slot.points[p].lat, slot.points[p].lon, &x, &y);
+      } else if (live) {
+        x = live_x;
+        y = live_y;
+      } else {
+        break;
+      }
       int x0 = prev_x;
       int y0 = prev_y;
       int x1 = x;
