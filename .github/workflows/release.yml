@@ -71,5 +71,21 @@ jobs:
             } > notes.md
             gh release create "$TAG" --repo "$REPO" --verify-tag \
               --title "$TAG" --notes-file notes.md
+          else
+            # A published auto-draft still starts with the hidden marker and
+            # the "Auto-generated draft ... then Publish" banner; drop both and
+            # keep everything else (including any edits made before publishing).
+            gh release view "$TAG" --repo "$REPO" --json body --jq .body |
+              sed 's/\r$//' > body.md
+            if grep -qxF '<!-- plane-radar-auto-draft -->' body.md; then
+              awk '
+                state == 0 && $0 == "<!-- plane-radar-auto-draft -->" { state = 1; next }
+                state == 1 && /^> / { next }
+                state == 1 && /^$/ { state = 2; next }
+                { if (state == 1) state = 2; print }
+              ' body.md > notes.md
+              gh release edit "$TAG" --repo "$REPO" --notes-file notes.md
+              echo "Removed the draft banner from the $TAG notes"
+            fi
           fi
           gh release upload "$TAG" dist/* --repo "$REPO" --clobber
