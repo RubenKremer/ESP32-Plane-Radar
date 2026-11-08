@@ -1,61 +1,58 @@
-# Tag a release (v1.0.0) to attach firmware to GitHub Releases.
+# Build release firmware for a tag and attach it to its GitHub Release.
+#
+# Runs when a release is published (e.g. the auto-draft from build.yml) or a
+# v* tag is pushed. The firmware is rebuilt at the tag so it reports exactly
+# that version, replacing any preview files the draft carried. Idempotent:
+# if publishing also fires the tag push, the second run re-uploads the same
+# files.
 name: Release
 
 on:
+  release:
+    types: [published]
   push:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)build and attach firmware to
+        required: true
 
 permissions:
   contents: write
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout tag
         uses: actions/checkout@v4
-
-      - name: Cache PlatformIO
-        uses: actions/cache@v4
         with:
-          path: |
-            ~/.cache/pip
-            ~/.platformio/.cache
-            .pio/libdeps
-          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
-          restore-keys: |
-            ${{ runner.os }}-pio-
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Build firmware
+        uses: ./.github/actions/build-firmware
         with:
-          python-version: "3.11"
+          version: ${{ env.TAG }}
 
-      - name: Install PlatformIO
-        run: pip install --upgrade platformio
-
-      - name: Build and merge
-        run: |
-          pio run -e supermini
-          pio run -t merge -e supermini
-
-      - name: Package release files
-        run: |
-          VERSION="${GITHUB_REF_NAME}"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION="manual-${GITHUB_SHA::7}"
-          fi
-          mkdir -p dist
-          cp .pio/build/supermini/firmware-merged.bin "dist/plane-radar-${VERSION}.bin"
-          sha256sum "dist/plane-radar-${VERSION}.bin" > "dist/plane-radar-${VERSION}.bin.sha256"
-          echo "version=${VERSION}" >> "$GITHUB_ENV"
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          generate_release_notes: true
+      - name: Attach firmware to the release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            # Tag pushed by hand: create the release for it.
+            gh release create "$TAG" --repo "$REPO" --verify-tag \
+              --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" dist/* --repo "$REPO" --clobber

@@ -9,6 +9,12 @@ namespace config {
 // --- Wi-Fi portal ---
 constexpr char kPortalApName[] = "PlaneRadar-Setup";
 constexpr char kPortalTitle[] = "ESP32 Plane Radar";
+
+// Set at build time by scripts/firmware_version.py (git tag / CI release).
+#ifndef PLANE_RADAR_VERSION
+#define PLANE_RADAR_VERSION "dev"
+#endif
+constexpr char kFirmwareVersion[] = PLANE_RADAR_VERSION;
 constexpr char kPortalIp[] = "192.168.4.1";
 /** mDNS host (no ".local" suffix); browser: http://plane-radar.local */
 constexpr char kPortalHostname[] = "plane-radar";

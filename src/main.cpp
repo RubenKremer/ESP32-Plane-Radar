@@ -92,7 +92,7 @@ void setup() {
   Serial.setTxTimeoutMs(0);
   delay(500);
   Serial.println();
-  Serial.println("Plane Radar");
+  Serial.printf("Plane Radar %s\n", config::kFirmwareVersion);
   if (config::kEnablePerfLog) {
     Serial.println(
         "perf log on — each poll prints http_get/json/grid/items/blit (ms)");

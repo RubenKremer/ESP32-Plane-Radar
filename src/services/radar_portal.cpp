@@ -2,6 +2,7 @@
 
 #include <WiFiManager.h>
 
+#include "config.h"
 #include "services/radar_location.h"
 #include "ui/radar_range.h"
 
@@ -16,15 +17,20 @@ namespace {
 constexpr char kPath[] = "/radar-settings";
 constexpr size_t kCoordFieldLen = 20;
 
+// Shown under the menu buttons, so the version is visible before and after
+// an OTA update.
+#define PLANE_RADAR_VERSION_HTML \
+  "<p class='c'><small>Firmware " PLANE_RADAR_VERSION "</small></p>\n"
+
 static const char kMenuLink[] =
     "<form action='/radar-settings' method='get'><button>Radar settings</button>"
-    "</form><br/>\n";
+    "</form><br/>\n" PLANE_RADAR_VERSION_HTML;
 
 static const char kMenuLanLink[] =
     "<form action='/radar-settings' method='get'><button>Radar settings</button>"
     "</form><br/>\n"
     "<form action='/restart' method='get'><button>Reset and disable Portal</button>"
-    "</form><br/>\n";
+    "</form><br/>\n" PLANE_RADAR_VERSION_HTML;
 
 static const char kPageStyle[] PROGMEM =
     "<style>"

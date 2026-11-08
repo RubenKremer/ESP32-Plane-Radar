@@ -1,15 +1,23 @@
-# Build firmware on push/PR; upload binaries as a short-lived artifact.
+# Build firmware on every push and PR. Each push to main also refreshes a
+# draft GitHub Release with the new firmware, ready to review and publish.
 name: Build
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
-  group: build-${{ github.workflow }}-${{ github.ref }}
+  group: build-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  # Proposed tag for the first draft, when the repo has no releases yet.
+  INITIAL_VERSION: v1.2.0
 
 jobs:
   firmware:
@@ -17,39 +25,80 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Cache PlatformIO
-        uses: actions/cache@v4
         with:
-          path: |
-            ~/.cache/pip
-            ~/.platformio/.cache
-            .pio/libdeps
-          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
-          restore-keys: |
-            ${{ runner.os }}-pio-
+          fetch-depth: 0 # tags, for git describe
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Build firmware
+        uses: ./.github/actions/build-firmware
 
-      - name: Install PlatformIO
-        run: pip install --upgrade platformio
-
-      - name: Build
-        run: pio run -e supermini
-
-      - name: Merge web-flash image
-        run: pio run -t merge -e supermini
-
-      - name: Upload firmware artifacts
+      - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
           name: plane-radar-supermini
           if-no-files-found: error
-          path: |
-            .pio/build/supermini/firmware-merged.bin
-            .pio/build/supermini/firmware.bin
-            .pio/build/supermini/bootloader.bin
-            .pio/build/supermini/partitions.bin
+          path: dist/*
+
+  draft-release:
+    needs: firmware
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-draft
+      cancel-in-progress: true
+    steps:
+      - name: Download firmware artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: plane-radar-supermini
+          path: dist
+
+      - name: Refresh draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          marker='<!-- plane-radar-auto-draft -->'
+
+          # Propose the next patch version after the latest published release.
+          latest="$(gh release list --repo "$REPO" --exclude-drafts --exclude-pre-releases \
+            --limit 1 --json tagName --jq '.[0].tagName // empty')"
+          if [[ -z "$latest" ]]; then
+            next="$INITIAL_VERSION"
+          elif [[ "$latest" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            next="v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))"
+          else
+            next="${latest}-next"
+          fi
+          echo "Latest release: ${latest:-none}; proposing $next"
+
+          notes_args=(-f tag_name="$next" -f target_commitish="$GITHUB_SHA")
+          if [[ -n "$latest" ]]; then
+            notes_args+=(-f previous_tag_name="$latest")
+          fi
+          generated="$(gh api "repos/$REPO/releases/generate-notes" "${notes_args[@]}" --jq .body)"
+
+          {
+            echo "$marker"
+            echo "> **Auto-generated draft** from \`${GITHUB_SHA::7}\`, refreshed on every push to \`main\`."
+            echo "> Edit the tag (and these notes) if needed, then **Publish**. Publishing creates the tag,"
+            echo "> and the Release workflow rebuilds the firmware so it reports exactly that version."
+            echo
+            echo "**Files:** \`plane-radar-full.bin\`: first install over USB, flash at \`0x0\` (erases settings)."
+            echo "\`plane-radar-ota.bin\`: update through the portal's **Update** page (keeps settings)."
+            echo
+            echo "$generated"
+          } > notes.md
+
+          # Replace the previous auto-draft (only ones this workflow made).
+          gh api "repos/$REPO/releases" --paginate \
+            --jq ".[] | select(.draft and ((.body // \"\") | contains(\"$marker\"))) | .id" |
+          while read -r id; do
+            echo "Deleting previous draft $id"
+            gh api -X DELETE "repos/$REPO/releases/$id"
+          done
+
+          gh release create "$next" dist/* --repo "$REPO" --draft \
+            --target "$GITHUB_SHA" --title "$next" --notes-file notes.md
