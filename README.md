@@ -2,7 +2,7 @@
 
 <img width="800" height="450" alt="plane-radar" src="https://github.com/user-attachments/assets/716d0992-dab8-47ba-8f1a-2aec7f607419" />
 
-**3D printed case (STL + assembly):** [MakerWorld](https://makerworld.com/en/models/2872376-esp32-plane-radar-live-ads-b-on-a-round-display#profileId-3207083) · **Firmware:** [Releases](https://github.com/MatixYo/ESP32-Plane-Radar/releases)
+**3D printed case (STL + assembly):** [MakerWorld](https://makerworld.com/en/models/2872376-esp32-plane-radar-live-ads-b-on-a-round-display#profileId-3207083) · **Firmware:** [Releases](https://github.com/RubenKremer/ESP32-Plane-Radar/releases)
 
 Firmware for an **ESP32-C3 Super Mini** and a **1.28″ round GC9A01** display (240×240). Shows a circular **ADS-B radar** around your configured location, with **WiFiManager** for first-time setup.
 
@@ -67,6 +67,13 @@ The same portal runs on the setup AP and on the device’s LAN IP while connecte
 Location, units, runway/aircraft display options, trails, range, poll interval, and compass heading are on **Radar settings** — not on **Configure WiFi** (except Wi‑Fi credentials and radio TX power).
 
 After a **factory reset** (15 s BOOT hold), the device reboots and opens the setup portal on the next boot (no “Connecting” loop on stale credentials). That one-time behavior is stored in NVS — a normal power cycle afterward reconnects using saved Wi‑Fi as usual.
+
+### Firmware update over Wi‑Fi (OTA)
+
+The portal’s root menu has an **Update** page. Upload **`plane-radar-ota.bin`** from a [release](https://github.com/RubenKremer/ESP32-Plane-Radar/releases), or `.pio/build/supermini/firmware.bin` from a local build. Do not upload the merged/full image. Wi‑Fi and radar settings are kept, and the device reboots into the new firmware.
+
+- The running **firmware version** is shown under the menu buttons, and printed on serial at boot (`Plane Radar v1.2.0`).
+- OTA needs the two-slot partition table (`app0`/`app1` in `partitions/plane_radar.csv`). The update is written to the inactive slot and switched to on reboot. **Update** is hidden on boards still running the older single-slot table. Flash those once over USB (see [Build](#build)); after that, OTA works.
 
 ## Radar display
 
@@ -157,6 +164,15 @@ data/
   ui_font.vlw              — embedded smooth UI font (Noto Sans Bold)
 scripts/
   build_large_airports.py
+  firmware_version.py      — PlatformIO pre-script: bakes in PLANE_RADAR_VERSION
+  merge_firmware.py        — PlatformIO `merge` target (single flashable .bin)
+  merge-firmware.sh / .ps1 — build + write release/plane-radar-merged.bin
+  flash-firmware.sh / .ps1 — flash over USB with esptool
+partitions/
+  plane_radar.csv          — two OTA app slots + NVS
+.github/
+  actions/build-firmware/  — shared CI build + packaging step
+  workflows/               — build.yml (CI + draft release), release.yml
 src/
   main.cpp
   data/
@@ -234,17 +250,29 @@ If PowerShell refuses to run scripts, allow local scripts once with `Set-Executi
 
 | Workflow | When | Output |
 |----------|------|--------|
-| [Build](.github/workflows/build.yml) | Push / PR to `main` | Artifact `plane-radar-supermini` (merged + split `.bin` files, ~90 days) |
-| [Release](.github/workflows/release.yml) | Git tag `v*` (e.g. `v1.0.0`) | GitHub Release asset `plane-radar-v1.0.0.bin` + `.sha256` |
+| [Build](.github/workflows/build.yml) | Every push / PR | Artifact `plane-radar-supermini` (~90 days) |
+| [Build](.github/workflows/build.yml) → draft | Push to `main` | A **draft** GitHub Release with the new firmware, replaced on every push |
+| [Release](.github/workflows/release.yml) | A release is published, or a `v*` tag is pushed | Firmware rebuilt at the tag and attached to that release |
 
-To ship a version users can download:
+Every release (and the build artifact) carries:
 
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
+| File | Use |
+|------|-----|
+| `plane-radar-full.bin` | First install over USB: flash at **0x0** (ESP32-C3, 4 MB). Erases saved settings. |
+| `plane-radar-ota.bin` | Update through the portal’s **Update** page. Keeps settings. |
+| `SHA256SUMS.txt` | Checksums of both |
 
-The release workflow builds firmware in CI and attaches the merged image to the release. Download from **Releases** on GitHub, then flash at **0x0** (ESP32-C3, 4 MB).
+**Shipping a release:**
+
+1. Merge into `main`. CI builds the firmware and refreshes a draft release on the **Releases** page. Drafts are only visible to people with write access.
+2. Open the draft. It proposes the next patch version after the latest published release (`v1.2.0` when there is none yet), with notes generated from the merged PRs. Change the tag or notes if needed.
+3. Click **Publish**. This creates the tag, and the Release workflow rebuilds the firmware at that tag so it reports exactly that version. The draft’s preview files are replaced.
+
+Pushing a tag by hand still works (`git tag v1.2.0` and `git push origin v1.2.0`): the Release workflow creates the release and attaches the firmware.
+
+Version strings come from `scripts/firmware_version.py`: the `PLANE_RADAR_VERSION` environment variable if set (CI sets it to the tag), otherwise `git describe --tags --always --dirty` (e.g. `v1.2.0-3-gabc1234`), otherwise `dev`.
+
+In a fork, GitHub keeps workflows switched off until you enable them once in the repository’s **Actions** tab.
 
 ## Dependencies
 

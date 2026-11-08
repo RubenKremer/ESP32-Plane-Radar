@@ -1,0 +1,57 @@
+# Shared by build.yml and release.yml: build the supermini firmware and
+# package the release files into dist/.
+name: Build Plane Radar firmware
+description: Build, merge and package the ESP32-C3 firmware into dist/.
+
+inputs:
+  version:
+    description: >-
+      Version baked into the firmware (PLANE_RADAR_VERSION). Empty means
+      scripts/firmware_version.py falls back to `git describe`.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    # Cache downloads and the toolchain only. Libraries (.pio/libdeps) are
+    # deliberately not cached: a fallback restore could hand back an older
+    # library that still satisfies lib_deps and hide a breaking update
+    # (this is how a LovyanGFX 1.2.x build break once went unnoticed upstream).
+    - name: Cache PlatformIO toolchain
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/pip
+          ~/.platformio/.cache
+          ~/.platformio/packages
+          ~/.platformio/platforms
+        key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+        restore-keys: |
+          ${{ runner.os }}-pio-
+
+    - name: Install PlatformIO
+      shell: bash
+      run: pip install --upgrade platformio
+
+    - name: Build and merge
+      shell: bash
+      env:
+        PLANE_RADAR_VERSION: ${{ inputs.version }}
+      run: |
+        pio run -e supermini
+        pio run -t merge -e supermini
+
+    - name: Package release files
+      shell: bash
+      run: |
+        mkdir -p dist
+        cp .pio/build/supermini/firmware-merged.bin dist/plane-radar-full.bin
+        cp .pio/build/supermini/firmware.bin dist/plane-radar-ota.bin
+        (cd dist && sha256sum plane-radar-full.bin plane-radar-ota.bin > SHA256SUMS.txt)
+        cat dist/SHA256SUMS.txt
