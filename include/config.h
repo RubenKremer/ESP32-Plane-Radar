@@ -60,6 +60,10 @@ constexpr double kDefaultRadarLon = 4.9041;
 
 /** Default poll interval (ms); runtime value from NVS via ui::radar::pollIntervalMs(). */
 constexpr unsigned long kAdsbFetchIntervalMs = 3000;
+/** Redraw cadence between fetches. Aircraft are dead-reckoned along their
+ *  track at their ground speed, so this is what makes motion smooth. A frame
+ *  is only repainted when something moved by at least a pixel. */
+constexpr unsigned long kRadarRedrawIntervalMs = 250;
 /** Legacy scale unused — fetch uses radar::fetchRadiusKm() to screen edge. */
 constexpr float kAdsbFetchRadiusScale = 1.0f;
 /** false = hide aircraft with alt_baro "ground"; true = show them too. */

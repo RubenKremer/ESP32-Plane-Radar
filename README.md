@@ -110,11 +110,15 @@ Preset and miles/km choice persist across reboot (`planeradar` NVS namespace). C
 
 As range decreases (or aircraft approach), targets move inward; beyond-ring dots become full symbols when they cross the outer ring.
 
+**Smooth motion:** between fetches, each aircraft is moved along its ground track at its ground speed, and the radar redraws at **4 Hz** (`kRadarRedrawIntervalMs`). A frame is only repainted when something moved by a pixel. The estimate starts from when the position was measured, not when it was fetched: adsb.fi’s `seen_pos` is often 10–30 s old, and is capped at 30 s. Total projection is capped at 60 s, so a long poll interval can’t throw a turning aircraft far off course. Positions snap back to real data on every fetch, and motion pauses briefly while a fetch is in progress. Trails record the estimated position at each fetch, with a live segment to the moving symbol.
+
 ### ADS-B
 
 - Source: `https://opendata.adsb.fi/api/v3/`
 - Fetch radius: `ui::radar::fetchRadiusKm()` — scales with the active preset to roughly the screen edge (so rim dots have data)
 - HTTPS connection is **reused** across polls (keep-alive) so a typical update is a few hundred milliseconds after the first handshake; BOOT range taps stay responsive during a fetch
+- A new TLS connection gets up to **5 s** to connect, and a request up to **6 s** overall. A failed fresh connect is left for the next poll instead of being retried in a loop. A kept-alive connection the server has closed gets one immediate reconnect.
+- Responses are decoded whether they arrive **chunked** (adsb.fi behind Cloudflare) or with a `Content-Length`, and are parsed straight off the socket, keeping only the fields the radar uses
 - Poll interval: `ui::radar::pollIntervalMs()` — default **3 s**, configurable in **Radar settings** (3 / 5 / 10 / 15 / 30 s). Presets are **minimum spacing between fetch attempts**. Stay at or above 3 s to respect adsb.fi’s **1 req/s** public limit.
 - Ground aircraft hidden by default (`kAdsbShowGroundAircraft`)
 
@@ -273,6 +277,7 @@ Pushing a tag by hand still works (`git tag v1.2.0` and `git push origin v1.2.0`
 Version strings come from `scripts/firmware_version.py`: the `PLANE_RADAR_VERSION` environment variable if set (CI sets it to the tag), otherwise `git describe --tags --always --dirty` (e.g. `v1.2.0-3-gabc1234`), otherwise `dev`.
 
 In a fork, GitHub keeps workflows switched off until you enable them once in the repository’s **Actions** tab.
+
 
 ## Dependencies
 

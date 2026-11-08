@@ -23,6 +23,7 @@ bool g_radar_visible = false;
 unsigned long g_wifi_down_since = 0;
 unsigned long g_last_reconnect_ms = 0;
 unsigned long g_last_adsb_fetch_ms = 0;
+unsigned long g_last_redraw_ms = 0;
 
 void applyPendingRangeRedraw() {
   if (!ui::radar::rangeDirty()) {
@@ -154,6 +155,12 @@ void loop() {
           !wifiBootButtonPressed()) {
         g_last_adsb_fetch_ms = millis();
         fetchAndDrawAircraft();
+        g_last_redraw_ms = millis();
+      } else if (millis() - g_last_redraw_ms >= config::kRadarRedrawIntervalMs) {
+        // Between fetches: redraw with dead-reckoned positions (skipped
+        // inside when nothing moved by a pixel).
+        g_last_redraw_ms = millis();
+        ui::radarDisplayRefreshAircraft();
       }
     }
   }

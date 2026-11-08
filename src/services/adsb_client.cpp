@@ -6,6 +6,7 @@
 
 #include <ArduinoJson.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -20,11 +21,21 @@ namespace {
 
 constexpr char kApiBase[] = "https://opendata.adsb.fi/api/v3/lat/";
 constexpr float kKmPerNm = 1.852f;
-constexpr int kConnectAttemptMs = 200;
-constexpr unsigned long kRequestTimeoutMs = 10000;
+// A TLS handshake rarely completes in 200 ms; the old value made nearly every
+// fresh connect fail and retry. A stalled connect now waits once, and the next
+// poll tries again rather than retrying in a loop.
+constexpr int kConnectTimeoutMs = 5000;
+constexpr unsigned long kRequestTimeoutMs = 6000;
+
+/** Dead-reckoning: cap the fix age taken from seen_pos, and the total time a
+ *  position is projected forward, so a stale or turning aircraft isn't flung
+ *  far off its real position (e.g. with a long poll interval). */
+constexpr uint32_t kMaxPosAgeMs = 30000;
+constexpr unsigned long kMaxExtrapolationMs = 60000;
 
 Aircraft s_aircraft[kMaxAircraft];
 size_t s_aircraft_count = 0;
+unsigned long s_last_update_ms = 0;
 PollFn s_poll_fn = nullptr;
 AbortFn s_abort_fn = nullptr;
 
@@ -144,7 +155,7 @@ struct AdsbSession {
     tls.setInsecure();
     http.setReuse(true);
     http.setTimeout(kRequestTimeoutMs);
-    http.setConnectTimeout(kConnectAttemptMs);
+    http.setConnectTimeout(kConnectTimeoutMs);
     configured = true;
   }
 
@@ -174,6 +185,11 @@ int performGet(const char* url) {
     return s_session.http.GET();
   };
 
+  // A kept-alive connection the server has since closed fails immediately;
+  // that case is worth one reconnect. A fresh connect that failed already
+  // waited up to kConnectTimeoutMs, so it is left for the next poll.
+  const bool reusing_connection = s_session.tls.connected();
+
   int code = attempt();
   if (code == kFetchAborted) {
     s_session.drop();
@@ -182,9 +198,10 @@ int performGet(const char* url) {
   if (code > 0) {
     return code;
   }
-  if (code != HTTPC_ERROR_CONNECTION_REFUSED &&
-      code != HTTPC_ERROR_NOT_CONNECTED &&
-      code != HTTPC_ERROR_CONNECTION_LOST) {
+  if (!reusing_connection ||
+      (code != HTTPC_ERROR_CONNECTION_REFUSED &&
+       code != HTTPC_ERROR_NOT_CONNECTED &&
+       code != HTTPC_ERROR_CONNECTION_LOST)) {
     s_session.drop();
     return code;
   }
@@ -212,6 +229,7 @@ void buildAircraftFilter(JsonDocument& filter) {
   filter["ac"][0]["t"] = true;
   filter["ac"][0]["alt_baro"] = true;
   filter["ac"][0]["alt_geom"] = true;
+  filter["ac"][0]["seen_pos"] = true;  // fix age, for dead-reckoning
 }
 
 float kmToNauticalMiles(float km) { return km / kKmPerNm; }
@@ -343,6 +361,36 @@ size_t aircraftCount() { return s_aircraft_count; }
 
 const Aircraft* aircraftList() { return s_aircraft; }
 
+unsigned long lastUpdateMs() { return s_last_update_ms; }
+
+void estimatedPosition(const Aircraft& plane, unsigned long now_ms, float* lat,
+                       float* lon) {
+  *lat = plane.lat;
+  *lon = plane.lon;
+  if (s_last_update_ms == 0 || plane.gs_knots <= 0.0f) {
+    return;
+  }
+  unsigned long elapsed_ms = (now_ms - s_last_update_ms) + plane.pos_age_ms;
+  if (elapsed_ms > kMaxExtrapolationMs) {
+    elapsed_ms = kMaxExtrapolationMs;
+  }
+  const float dist_km = plane.gs_knots * kKmPerNm *
+                        (static_cast<float>(elapsed_ms) / 3600000.0f);
+  if (dist_km <= 0.0f) {
+    return;
+  }
+  constexpr float kKmPerDeg = 111.0f;
+  constexpr float kDegToRad = 0.01745329252f;
+  const float track_rad = plane.track_deg * kDegToRad;  // 0 = N, 90 = E
+  // A degree of longitude shrinks by cos(latitude).
+  float cos_lat = cosf(plane.lat * kDegToRad);
+  if (cos_lat < 0.01f) {
+    cos_lat = 0.01f;
+  }
+  *lat = plane.lat + (dist_km * cosf(track_rad)) / kKmPerDeg;
+  *lon = plane.lon + (dist_km * sinf(track_rad)) / (kKmPerDeg * cos_lat);
+}
+
 bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   const float dist_nm = kmToNauticalMiles(fetch_radius_km);
   auto& perf = debug::perf::current();
@@ -435,6 +483,10 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   }
   s_session.http.end();
 
+  // Base time for dead-reckoning: the fetched positions are current as of now
+  // (less each aircraft's own pos_age_ms).
+  s_last_update_ms = millis();
+
   JsonArray ac = doc["ac"].as<JsonArray>();
   if (ac.isNull()) {
     s_aircraft_count = 0;
@@ -464,6 +516,17 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
     s_aircraft[n].nose_deg = pickNoseHeading(plane);
     s_aircraft[n].track_deg = pickTrackHeading(plane);
     s_aircraft[n].gs_knots = pickGroundSpeed(plane);
+
+    // seen_pos: seconds since this position was measured (often 10-30 s).
+    float seen_pos_s = 0.0f;
+    readJsonFloat(plane, "seen_pos", &seen_pos_s);
+    uint32_t age_ms =
+        seen_pos_s > 0.0f ? static_cast<uint32_t>(seen_pos_s * 1000.0f) : 0;
+    if (age_ms > kMaxPosAgeMs) {
+      age_ms = kMaxPosAgeMs;
+    }
+    s_aircraft[n].pos_age_ms = age_ms;
+
     fillTagFields(&s_aircraft[n], plane);
     ++n;
   }

@@ -1,5 +1,6 @@
 #include "ui/radar_display.h"
 
+#include <Arduino.h>
 #include <lgfx/v1/lgfx_fonts.hpp>
 
 #include <algorithm>
@@ -513,18 +514,23 @@ void computeDrawItems(AircraftDrawItem* items, size_t* draw_count,
 
   *draw_count = 0;
   *dot_count = 0;
+  const unsigned long now_ms = millis();
 
   for (size_t i = 0; i < n; ++i) {
+    // Dead-reckoned position, so aircraft move smoothly between fetches.
+    float lat = 0.0f;
+    float lon = 0.0f;
+    services::adsb::estimatedPosition(planes[i], now_ms, &lat, &lon);
+
     float dx_km = 0.0f;
     float dy_km = 0.0f;
     float dist_km = 0.0f;
-    radar::offsetKmFromCenter(planes[i].lat, planes[i].lon, &dx_km, &dy_km,
-                              &dist_km);
+    radar::offsetKmFromCenter(lat, lon, &dx_km, &dy_km, &dist_km);
 
     if (dist_km <= inner_max_km) {
       int x = 0;
       int y = 0;
-      radar::latLonToScreen(planes[i].lat, planes[i].lon, &x, &y);
+      radar::latLonToScreen(lat, lon, &x, &y);
       items[*draw_count].index = i;
       items[*draw_count].x = x;
       items[*draw_count].y = y;
