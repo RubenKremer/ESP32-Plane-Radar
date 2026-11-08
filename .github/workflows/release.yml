@@ -51,8 +51,25 @@ jobs:
         run: |
           set -euo pipefail
           if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            # Tag pushed by hand: create the release for it.
+            # Tag pushed by hand: create the release for it, with generated
+            # notes plus credits for ported work since the previous tag.
+            # (A published draft already has both.)
+            previous="$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)"
+            notes_args=(-f tag_name="$TAG")
+            if [[ -n "$previous" ]]; then
+              notes_args+=(-f previous_tag_name="$previous")
+              credits="$(bash .github/scripts/release-credits.sh "$previous..$TAG")"
+            else
+              credits="$(bash .github/scripts/release-credits.sh "$TAG")"
+            fi
+            {
+              gh api "repos/$REPO/releases/generate-notes" "${notes_args[@]}" --jq .body
+              if [[ -n "$credits" ]]; then
+                echo
+                echo "$credits"
+              fi
+            } > notes.md
             gh release create "$TAG" --repo "$REPO" --verify-tag \
-              --title "$TAG" --generate-notes
+              --title "$TAG" --notes-file notes.md
           fi
           gh release upload "$TAG" dist/* --repo "$REPO" --clobber

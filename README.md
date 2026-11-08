@@ -176,6 +176,7 @@ partitions/
   plane_radar.csv          — two OTA app slots + NVS
 .github/
   actions/build-firmware/  — shared CI build + packaging step
+  scripts/release-credits.sh — Credits section for release notes
   workflows/               — build.yml (CI + draft release), release.yml
 src/
   main.cpp
@@ -278,6 +279,26 @@ Version strings come from `scripts/firmware_version.py`: the `PLANE_RADAR_VERSIO
 
 In a fork, GitHub keeps workflows switched off until you enable them once in the repository’s **Actions** tab.
 
+**Crediting ported work:** GitHub’s generated notes only list PR titles and the PR author. When a commit ports someone else’s change, add two trailers to its message:
+
+```
+Ported-from: MatixYo/ESP32-Plane-Radar#90 (33c32e7) by @pvanbaren
+Co-authored-by: Philip Van Baren <pdvb@yahoo.com>
+```
+
+`Co-authored-by` credits the author on the commit itself. `Ported-from` is collected by [`release-credits.sh`](.github/scripts/release-credits.sh) into a **Credits** section of the release notes, covering everything since the previous release. Take the author’s name and email from the original commit (`git log -1 --format='%an <%ae>' <sha>`).
+
+## Credits
+
+This fork builds on [MatixYo/ESP32-Plane-Radar](https://github.com/MatixYo/ESP32-Plane-Radar) by Mateusz Juszczyk. Upstream fixes ported here:
+
+| Change | Upstream | Author |
+|--------|----------|--------|
+| Decode chunked HTTP responses from adsb.fi | MatixYo/ESP32-Plane-Radar#90 (`5cec5d1`) | Philip Van Baren (@pvanbaren) |
+| Dead-reckon aircraft between fetches, 4 Hz redraw | MatixYo/ESP32-Plane-Radar#90 (`33c32e7`) | Philip Van Baren (@pvanbaren) |
+| Longer TLS connect timeout, no retry storm | MatixYo/ESP32-Plane-Radar#94 (`e23b82c`) | Dmytro Gaivoronsky (@dreamiurg) |
+| East-west distances scaled by cos(latitude) | MatixYo/ESP32-Plane-Radar#50 (`5f399e2`) | Selma Pittman (@selmapi) |
+| Saved 32-byte Wi‑Fi SSID | MatixYo/ESP32-Plane-Radar#76 (`f14ca5d`) | Embraer1998 (@Embraer1998) |
 
 ## Dependencies
 
