@@ -11,6 +11,7 @@
 
 #include "config.h"
 #include "debug/perf_log.h"
+#include "services/http_body_framing.h"
 #include "ui/radar_range.h"
 
 namespace services::adsb {
@@ -153,49 +154,6 @@ struct AdsbSession {
     configure();
     return http.begin(tls, url);
   }
-
-  bool drainBody(int content_len, size_t already, unsigned long deadline) {
-    if (content_len < 0) {
-      drop();
-      return false;
-    }
-    size_t need = static_cast<size_t>(content_len);
-    if (already >= need) {
-      return true;
-    }
-    need -= already;
-    uint8_t buf[256];
-    while (need > 0) {
-      if (fetchAborted() || millis() > deadline) {
-        drop();
-        return false;
-      }
-      pollNetwork();
-      const int avail = tls.available();
-      if (avail <= 0) {
-        if (!tls.connected()) {
-          drop();
-          return false;
-        }
-        delay(1);
-        continue;
-      }
-      size_t chunk = static_cast<size_t>(avail);
-      if (chunk > need) {
-        chunk = need;
-      }
-      if (chunk > sizeof(buf)) {
-        chunk = sizeof(buf);
-      }
-      const int got = tls.read(buf, chunk);
-      if (got <= 0) {
-        drop();
-        return false;
-      }
-      need -= static_cast<size_t>(got);
-    }
-    return true;
-  }
 };
 
 AdsbSession s_session;
@@ -209,6 +167,10 @@ int performGet(const char* url) {
     if (!s_session.beginUrl(url)) {
       return HTTPC_ERROR_CONNECTION_REFUSED;
     }
+    // HTTPClient only records Transfer-Encoding in the collected headers when
+    // asked for it up front; its own _transferEncoding is private.
+    static const char* kWantedHeaders[] = {"Transfer-Encoding"};
+    s_session.http.collectHeaders(kWantedHeaders, 1);
     return s_session.http.GET();
   };
 
@@ -424,12 +386,22 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   JsonDocument filter;
   buildAircraftFilter(filter);
 
+  // adsb.fi (behind Cloudflare) answers with Transfer-Encoding: chunked and no
+  // Content-Length. getStreamPtr() is the raw socket, chunk-size lines and all,
+  // so BodyFramer strips that framing before ArduinoJson sees it.
+  const bool chunked =
+      s_session.http.header("Transfer-Encoding").equalsIgnoreCase("chunked");
+  const services::http::BodyFraming framing =
+      chunked ? services::http::BodyFraming::kChunked
+              : services::http::BodyFraming::kIdentity;
+
   const unsigned long body_deadline = millis() + kRequestTimeoutMs;
   PollingStream stream(*raw, body_deadline);
+  services::http::BodyFramer<PollingStream> body(stream, framing, content_len);
   JsonDocument doc;
   t0 = debug::perf::nowMs();
   const DeserializationError err =
-      deserializeJson(doc, stream, DeserializationOption::Filter(filter));
+      deserializeJson(doc, body, DeserializationOption::Filter(filter));
   perf.json_ms = debug::perf::nowMs() - t0;
 
   if (stream.aborted() || err) {
@@ -438,12 +410,28 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
     if (stream.aborted()) {
       return false;
     }
-    Serial.printf("adsb: JSON parse error: %s\n", err.c_str());
+    if (body.framingError()) {
+      Serial.println("adsb: malformed chunked body");
+    } else if (body.bytesRead() == 0) {
+      Serial.println("adsb: empty response");
+    } else {
+      Serial.printf("adsb: JSON parse error: %s\n", err.c_str());
+    }
     return false;
   }
 
-  if (!s_session.drainBody(content_len, stream.bytesRead(), body_deadline)) {
-    Serial.println("adsb: body drain failed — dropping TLS");
+  // The parser stops at the closing brace; consume the rest of the body (the
+  // terminating 0-chunk, or the remaining Content-Length bytes) so the kept-
+  // alive TLS connection is positioned at the start of the next response.
+  // A close-delimited body can't be reused, so drop the connection then.
+  if (!chunked && content_len < 0) {
+    s_session.drop();
+  } else {
+    body.drain();
+    if (!body.complete()) {
+      Serial.println("adsb: body drain failed — dropping TLS");
+      s_session.drop();
+    }
   }
   s_session.http.end();
 

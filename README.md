@@ -215,6 +215,21 @@ pio run -t merge -e supermini
 
 Put the board in download mode (hold **BOOT**, tap **RESET**), then flash with Chrome/Edge over USB.
 
+### Windows (PowerShell)
+
+PowerShell equivalents of the scripts above (Windows PowerShell 5.1 or later). They find `pio` on PATH, in `~/.platformio/penv`, or as `python -m platformio`:
+
+```powershell
+.\scripts\merge-firmware.ps1             # build + write release\plane-radar-merged.bin
+.\scripts\merge-firmware.ps1 -NoBuild    # merge only
+.\scripts\flash-firmware.ps1 -Build -KeepSettings
+.\scripts\flash-firmware.ps1 -Port COM5  # merged image at 0x0
+```
+
+The merged image erases saved Wi-Fi and radar settings (NVS), because the gaps between its parts are blank. `-KeepSettings` writes the bootloader, partition table, `boot_app0` and app at their own offsets and leaves NVS alone. Without `-Port`, the script picks the Espressif USB device and ignores Bluetooth serial ports.
+
+If PowerShell refuses to run scripts, allow local scripts once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or run one with `powershell -ExecutionPolicy Bypass -File .\scripts\flash-firmware.ps1`.
+
 ### CI and releases (GitHub Actions)
 
 | Workflow | When | Output |

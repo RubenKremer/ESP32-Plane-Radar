@@ -8,6 +8,7 @@
 
 #include <Preferences.h>
 #include <esp_system.h>
+#include <esp_ota_ops.h>
 #include <esp_wifi.h>
 
 #ifdef WM_MDNS
@@ -235,14 +236,32 @@ bool wifiLinkUp() {
          WiFi.localIP() != IPAddress(0, 0, 0, 0);
 }
 
+/**
+ * True when a second app slot exists for OTA. With a single-slot partition
+ * table, esp_ota_get_next_update_partition() wraps around to the running slot,
+ * so an "update" would erase the code that is executing and crash the board.
+ */
+bool otaSlotAvailable() {
+  const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  return next != nullptr && running != nullptr &&
+         next->address != running->address;
+}
+
+/** Menu length, dropping the trailing "sep", "update" pair without OTA. */
+template <size_t N>
+int portalMenuLength(const char* (&)[N]) {
+  return otaSlotAvailable() ? static_cast<int>(N) : static_cast<int>(N) - 2;
+}
+
 void applyApPortalMenu() {
-  s_wm.setMenu(kMenuAp, sizeof(kMenuAp) / sizeof(kMenuAp[0]));
+  s_wm.setMenu(kMenuAp, portalMenuLength(kMenuAp));
   s_wm.setCustomMenuHTML(services::radar_portal::menuLinkHtml());
   s_wm.setShowBack(false);
 }
 
 void applyLanPortalMenu() {
-  s_wm.setMenu(kMenuLan, sizeof(kMenuLan) / sizeof(kMenuLan[0]));
+  s_wm.setMenu(kMenuLan, portalMenuLength(kMenuLan));
   s_wm.setCustomMenuHTML(services::radar_portal::menuLanLinkHtml());
   s_wm.setShowBack(true);
 }
@@ -472,12 +491,22 @@ bool connectSavedNetwork(bool show_ui) {
     return false;
   }
 
-  ensureWifiManager();
-  const String ssid = s_wm.getWiFiSSID();
-  if (ssid.length() == 0) {
+  wifi_config_t conf = {};
+  if (esp_wifi_get_config(WIFI_IF_STA, &conf) != ESP_OK ||
+      conf.sta.ssid[0] == '\0') {
     return false;
   }
-  const String pass = s_wm.getWiFiPass();
+
+  // ESP-IDF stores the SSID in a fixed 32-byte field. A maximum-length SSID
+  // has no room for a trailing NUL (WiFiManager's getWiFiSSID() then reads
+  // past it), so copy into larger buffers and terminate explicitly.
+  char ssid_buf[sizeof(conf.sta.ssid) + 1] = {};
+  memcpy(ssid_buf, conf.sta.ssid, sizeof(conf.sta.ssid));
+  char pass_buf[sizeof(conf.sta.password) + 1] = {};
+  memcpy(pass_buf, conf.sta.password, sizeof(conf.sta.password));
+
+  const String ssid(ssid_buf);
+  const String pass(pass_buf);
   return tryConnectWithUi(ssid, pass, show_ui);
 }
 

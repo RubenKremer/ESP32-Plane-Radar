@@ -57,10 +57,9 @@ float pointDistanceKm(float lat0, float lon0, float lat1, float lon1) {
   float dy_km = 0.0f;
   float dist_km = 0.0f;
   const float lat_mid = (lat0 + lat1) * 0.5f;
-  dx_km = (lon1 - lon0) * radar::kKmPerDeg;
+  dx_km = (lon1 - lon0) * radar::kKmPerDeg * cosf(lat_mid * radar::kDegToRad);
   dy_km = (lat1 - lat0) * radar::kKmPerDeg;
   dist_km = sqrtf(dx_km * dx_km + dy_km * dy_km);
-  (void)lat_mid;
   return dist_km;
 }
 
